@@ -8,6 +8,7 @@ export type HostSnapshot = {
   group: string
   role: string
   runtime: YardHostConfig['runtime']
+  systemd: boolean
   status: 'online' | 'offline' | 'error'
   error?: string
   fingerprint: string
@@ -107,6 +108,7 @@ export function createCollector(privateKeyPath: string): Collector {
         group: host.group,
         role: host.role,
         runtime: host.runtime,
+        systemd: host.systemd,
         status: 'offline',
         fingerprint: host.fingerprint,
         collectedAt: new Date().toISOString(),

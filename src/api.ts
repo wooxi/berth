@@ -7,6 +7,7 @@ export type HostSnapshot = {
   group: string
   role: string
   runtime: 'docker' | 'podman' | 'none'
+  systemd: boolean
   status: HostStatus
   error?: string
   fingerprint: string

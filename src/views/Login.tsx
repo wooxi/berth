@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { KeyRound, Network } from 'lucide-react'
+import { api } from '../api'
 
 export function LoginView({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState('')
@@ -11,7 +12,6 @@ export function LoginView({ onLogin }: { onLogin: () => void }) {
     setError('')
     setBusy(true)
     try {
-      const { api } = await import('../api')
       await api.login(password)
       setPassword('')
       onLogin()
@@ -28,7 +28,8 @@ export function LoginView({ onLogin }: { onLogin: () => void }) {
         <span className="brand-mark login-mark" aria-hidden="true"><Network size={18} strokeWidth={2.2} /></span>
         <p className="eyebrow">PRIVATE WORKSPACE</p>
         <h1 id="login-title">Yard</h1>
-        <div className="form-field">
+
+        <div className="field">
           <label htmlFor="login-password">管理口令</label>
           <input
             id="login-password"
@@ -42,10 +43,13 @@ export function LoginView({ onLogin }: { onLogin: () => void }) {
             onChange={(event) => setPassword(event.currentTarget.value)}
             autoFocus
           />
-          {error && <p id="login-error" className="form-error" role="alert">{error}</p>}
+          {error
+            ? <p id="login-error" className="form-error" role="alert">{error}</p>
+            : <span className="field-hint">会话有效期 8 小时，仅限内网</span>}
         </div>
+
         <button className="button button-primary login-submit" type="submit" disabled={busy}>
-          <KeyRound size={16} aria-hidden="true" />
+          <KeyRound size={15} aria-hidden="true" />
           {busy ? '验证中…' : '登录'}
         </button>
       </form>

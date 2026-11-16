@@ -20,7 +20,7 @@ const host: RegisteredHost = {
 
 test('only resolves a unique, valid registered host id', () => {
   const result = resolveRegisteredHost('edge-01', [host], auditContext)
-  assert.equal(result.target?.address, '192.168.100.6')
+  assert.equal(result.target?.address, '192.0.2.60')
   assert.equal(result.audit.reason, 'resolved')
   assert.equal(result.audit.event, 'target.resolved')
 })
