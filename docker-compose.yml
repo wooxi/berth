@@ -4,7 +4,7 @@ services:
     container_name: yard
     restart: unless-stopped
     ports:
-      - "192.168.100.4:5180:8080"
+      - "${YARD_LAN_BIND:-127.0.0.1}:5180:8080"
     volumes:
       - ./dist:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro

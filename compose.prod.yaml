@@ -15,7 +15,7 @@ services:
       PORT: 8080
     volumes:
       - ./hosts.json:/app/config/hosts.json:ro
-      - /root/lab-manual/secrets/ssh/id_rsa:/run/secrets/yard_ssh_key:ro
+      - ${YARD_SSH_KEY_FILE:?}:/run/secrets/yard_ssh_key:ro
       - ./data:/app/data
     expose:
       - "8080"
@@ -44,7 +44,7 @@ services:
       yard-backend:
         condition: service_healthy
     ports:
-      - "192.168.100.6:5180:8080"
+      - "${YARD_LAN_BIND:-127.0.0.1}:5180:8080"
     volumes:
       - ./dist:/usr/share/nginx/html:ro
       - ./nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
