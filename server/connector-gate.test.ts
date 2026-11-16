@@ -7,7 +7,7 @@ import type { PermissionGrant } from '../shared/access-control.ts'
 const host: RegisteredHost = {
   id: 'edge-01',
   label: 'Edge server',
-  address: '192.168.100.6',
+  address: '192.0.2.60',
   port: 22,
   username: 'yard-reader',
   expectedFingerprint: `SHA256:${'A'.repeat(43)}`,

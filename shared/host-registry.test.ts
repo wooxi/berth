@@ -12,7 +12,7 @@ const auditContext = { requestId: 'req-101', occurredAt: '2026-11-16T00:00:00.00
 const host: RegisteredHost = {
   id: 'edge-01',
   label: 'Edge server',
-  address: '192.168.100.6',
+  address: '192.0.2.60',
   port: 22,
   username: 'yard-reader',
   expectedFingerprint: fingerprint,
