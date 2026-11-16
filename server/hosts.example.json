@@ -1,0 +1,17 @@
+{
+  "hosts": [
+    {
+      "id": "example-node",
+      "label": "Example server",
+      "address": "192.0.2.10",
+      "port": 22,
+      "username": "yard-reader",
+      "fingerprint": "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "group": "Production",
+      "role": "Application node",
+      "runtime": "docker",
+      "systemd": true,
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.local
+.env
+server/hosts.json
+tsconfig.tsbuildinfo
+data/
+secrets/

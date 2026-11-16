@@ -1,0 +1,62 @@
+services:
+  yard-backend:
+    image: yard-backend:latest
+    build: .
+    container_name: yard-backend
+    restart: unless-stopped
+    environment:
+      YARD_HOSTS_FILE: /app/config/hosts.json
+      YARD_SSH_KEY: /run/secrets/yard_ssh_key
+      YARD_AUDIT_FILE: /app/data/audit.log
+      YARD_SESSION_SECRET: ${YARD_SESSION_SECRET:?}
+      YARD_PASSWORD_HASH: ${YARD_PASSWORD_HASH:?}
+      YARD_STATIC_ROOT: /app/public
+      YARD_BIND: 0.0.0.0
+      PORT: 8080
+    volumes:
+      - ./hosts.json:/app/config/hosts.json:ro
+      - /root/lab-manual/secrets/ssh/id_rsa:/run/secrets/yard_ssh_key:ro
+      - ./data:/app/data
+    expose:
+      - "8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "0.5"
+    mem_limit: 256m
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  yard-web:
+    image: nginxinc/nginx-unprivileged:1.29-alpine
+    container_name: yard-web
+    restart: unless-stopped
+    depends_on:
+      yard-backend:
+        condition: service_healthy
+    ports:
+      - "192.168.100.6:5180:8080"
+    volumes:
+      - ./dist:/usr/share/nginx/html:ro
+      - ./nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "0.25"
+    mem_limit: 128m
+    pids_limit: 64
