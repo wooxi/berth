@@ -1360,3 +1360,80 @@ dialog.palette::backdrop { background: rgb(26 26 24 / 24%); backdrop-filter: blu
   .host-dot, .log-dot, .ctr-dot, .a-dot, .gauge-rail > i { forced-color-adjust: none; }
   .tab[aria-selected='true']::after { background: Highlight; }
 }
+
+/* ============================================================
+   文件管理：操作条、编辑器
+   ============================================================ */
+
+.file-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-block-end: 1px solid var(--divider);
+  background: var(--warn-bg);
+}
+.file-action-label { color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.file-action-warn { color: var(--fail); font-size: 11.5px; }
+.file-action-input {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 28px;
+  padding-inline: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-chip);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.file-detail-head { display: flex; align-items: center; gap: 6px; }
+.file-detail-head h3 {
+  flex: 1;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-detail-head .icon-button { inline-size: 26px; block-size: 26px; }
+
+.file-editor {
+  flex: 1;
+  min-block-size: 220px;
+  max-block-size: 42dvh;
+  resize: vertical;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctrl);
+  color: var(--ink);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.65;
+  tab-size: 2;
+}
+.file-editor:focus { border-color: var(--ink-3); outline: none; }
+
+.file-editor-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.button.is-disabled { opacity: .45; cursor: not-allowed; }
+
+.file-action-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.file-action-check input { accent-color: var(--fail); }
+
+.file-detail-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.file-detail-actions .button { justify-content: flex-start; }

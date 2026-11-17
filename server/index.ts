@@ -6,7 +6,7 @@ import { createAuditSink, type AuditSink } from './audit.ts'
 import { createSessionStore, hashPassword, verifyPassword, type SessionStore } from './auth.ts'
 import { loadConfig, type YardConfig, type YardHostConfig } from './config.ts'
 import { createCollector, createContainerCollector, createLogCollector } from './collectors.ts'
-import { createFileLister } from './files.ts'
+import { createFileService, isProtectedPath, normalizeRemotePath } from './files.ts'
 import { openSshConnection } from './ssh.ts'
 
 const STATIC_ROOT = process.env.YARD_STATIC_ROOT ?? '/app/public'
@@ -19,7 +19,7 @@ const sessions: SessionStore = createSessionStore(config.sessionSecret)
 const collector = createCollector(config.privateKeyPath)
 const containerCollector = createContainerCollector(config.privateKeyPath)
 const logCollector = createLogCollector(config.privateKeyPath)
-const fileLister = createFileLister(config.privateKeyPath)
+const files = createFileService(config.privateKeyPath)
 
 const passwordHash = process.env.YARD_PASSWORD_HASH ?? hashPassword(process.env.YARD_PASSWORD ?? '')
 const allowedOrigins = new Set((process.env.YARD_ALLOWED_ORIGINS ?? '').split(',').map((value) => value.trim()).filter(Boolean))
@@ -58,6 +58,17 @@ function readCookie(request: IncomingMessage, name: string): string | null {
 function currentSession(request: IncomingMessage) {
   const sessionId = readCookie(request, 'yard_session')
   return sessionId ? sessions.get(sessionId) : null
+}
+
+async function readBodyBuffer(request: IncomingMessage, limit = 8 * 1024 * 1024): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of request) {
+    size += chunk.length
+    if (size > limit) throw new Error('payload too large')
+    chunks.push(chunk as Buffer)
+  }
+  return Buffer.concat(chunks)
 }
 
 async function readBody(request: IncomingMessage, limit = 64 * 1024): Promise<string> {
@@ -209,24 +220,202 @@ const server = createServer(async (request, response) => {
     return
   }
 
-  const fileMatch = pathname.match(/^\/api\/hosts\/([^/]+)\/files$/)
-  if (fileMatch && request.method === 'GET') {
-    const host = findHost(fileMatch[1])
+  const fileRoute = pathname.match(/^\/api\/hosts\/([^/]+)\/files(?:\/([a-z]+))?$/)
+  if (fileRoute) {
+    const host = findHost(fileRoute[1])
     if (!host) {
       sendJson(response, 404, { error: 'unknown host' })
       return
     }
+    const sub = fileRoute[2] ?? 'list'
     const requestedPath = url.searchParams.get('path') ?? '/root'
-    const result = await fileLister.list(host, requestedPath)
-    audit.record({
-      actor: session.subjectId,
-      action: 'files.list',
-      hostId: host.id,
-      outcome: result.ok ? 'allow' : 'deny',
-      detail: result.ok ? requestedPath : result.reason,
-    })
-    sendJson(response, result.ok ? 200 : 502, result.ok ? result : { error: result.reason })
-    return
+
+    if (sub === 'list' && request.method === 'GET') {
+      const result = await files.list(host, requestedPath)
+      audit.record({
+        actor: session.subjectId,
+        action: 'files.list',
+        hostId: host.id,
+        outcome: result.ok ? 'allow' : 'deny',
+        detail: result.ok ? result.path : result.reason,
+      })
+      sendJson(response, result.ok ? 200 : 502, result.ok ? result : { error: result.reason })
+      return
+    }
+
+    if (sub === 'read' && request.method === 'GET') {
+      const result = await files.read(host, requestedPath)
+      audit.record({
+        actor: session.subjectId,
+        action: 'files.read',
+        hostId: host.id,
+        outcome: result.ok ? 'allow' : 'deny',
+        detail: result.ok ? result.path : result.reason,
+      })
+      sendJson(response, result.ok ? 200 : 502, result.ok ? result : { error: result.reason })
+      return
+    }
+
+    if (sub === 'download' && request.method === 'GET') {
+      const result = await files.openDownload(host, requestedPath)
+      audit.record({
+        actor: session.subjectId,
+        action: 'files.download',
+        hostId: host.id,
+        outcome: result.ok ? 'allow' : 'deny',
+        detail: result.ok ? normalizeRemotePath(requestedPath) : result.reason,
+      })
+      if (!result.ok) {
+        sendJson(response, 502, { error: result.reason })
+        return
+      }
+      const name = normalizeRemotePath(requestedPath).split('/').pop() ?? 'download'
+      response.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'content-length': String(result.size),
+        'content-disposition': `attachment; filename="${name.replace(/["\\]/g, '_')}"`,
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      })
+      result.stream.pipe(response)
+      return
+    }
+
+    if (request.method === 'POST' || request.method === 'PUT') {
+      try {
+        if (sub === 'upload') {
+          const name = url.searchParams.get('name') ?? ''
+          const directory = url.searchParams.get('dir') ?? '/root'
+          const data = await readBodyBuffer(request)
+          const result = await files.upload(host, directory, name, data)
+          audit.record({
+            actor: session.subjectId,
+            action: 'files.upload',
+            hostId: host.id,
+            outcome: result.ok ? 'allow' : 'deny',
+            detail: result.ok ? `${normalizeRemotePath(directory)}/${name}` : result.reason,
+          })
+          sendJson(response, result.ok ? 200 : 400, result.ok ? result : { error: result.reason })
+          return
+        }
+
+        const payload = JSON.parse(await readBody(request)) as Record<string, unknown>
+        const asString = (value: unknown) => (typeof value === 'string' ? value : '')
+
+        if (sub === 'write') {
+          const target = asString(payload.path)
+          if (!target) throw new Error('缺少 path')
+          const result = await files.write(host, target, asString(payload.content))
+          audit.record({
+            actor: session.subjectId,
+            action: 'files.write',
+            hostId: host.id,
+            outcome: result.ok ? 'allow' : 'deny',
+            detail: result.ok ? normalizeRemotePath(target) : result.reason,
+          })
+          sendJson(response, result.ok ? 200 : 400, result.ok ? result : { error: result.reason })
+          return
+        }
+
+        if (sub === 'mkdir') {
+          const parent = asString(payload.path)
+          const name = asString(payload.name)
+          const result = await files.mkdir(host, parent, name)
+          audit.record({
+            actor: session.subjectId,
+            action: 'files.mkdir',
+            hostId: host.id,
+            outcome: result.ok ? 'allow' : 'deny',
+            detail: result.ok ? `${normalizeRemotePath(parent)}/${name}` : result.reason,
+          })
+          sendJson(response, result.ok ? 200 : 400, result.ok ? result : { error: result.reason })
+          return
+        }
+
+        if (sub === 'rename') {
+          const from = asString(payload.from)
+          const to = asString(payload.to)
+          const result = await files.rename(host, from, to)
+          audit.record({
+            actor: session.subjectId,
+            action: 'files.rename',
+            hostId: host.id,
+            outcome: result.ok ? 'allow' : 'deny',
+            detail: result.ok ? `${normalizeRemotePath(from)} → ${normalizeRemotePath(to)}` : result.reason,
+          })
+          sendJson(response, result.ok ? 200 : 400, result.ok ? result : { error: result.reason })
+          return
+        }
+
+        if (sub === 'delete') {
+          const target = asString(payload.path)
+          if (isProtectedPath(target)) {
+            audit.record({ actor: session.subjectId, action: 'files.delete', hostId: host.id, outcome: 'deny', detail: 'system runtime path' })
+            sendJson(response, 400, { error: '系统运行时目录不允许删除' })
+            return
+          }
+          const recursive = payload.recursive === true
+          const result = await files.remove(host, target, recursive)
+          audit.record({
+            actor: session.subjectId,
+            action: 'files.delete',
+            hostId: host.id,
+            outcome: result.ok ? 'allow' : 'deny',
+            detail: result.ok ? `${normalizeRemotePath(target)}${recursive ? ' (递归)' : ''}` : result.reason,
+          })
+          sendJson(response, result.ok ? 200 : 400, result.ok ? result : { error: result.reason })
+          return
+        }
+
+        if (sub === 'copy' || sub === 'move') {
+          const from = asString(payload.from)
+          const to = asString(payload.to)
+          const result = sub === 'copy' ? await files.copy(host, from, to) : await files.move(host, from, to)
+          audit.record({
+            actor: session.subjectId,
+            action: `files.${sub}`,
+            hostId: host.id,
+            outcome: result.ok ? 'allow' : 'deny',
+            detail: result.ok ? `${normalizeRemotePath(from)} → ${normalizeRemotePath(to)}` : result.reason,
+          })
+          sendJson(response, result.ok ? 200 : 400, result.ok ? result : { error: result.reason })
+          return
+        }
+
+        if (sub === 'chmod') {
+          const target = asString(payload.path)
+          const mode = asString(payload.mode)
+          const result = await files.chmod(host, target, mode)
+          audit.record({
+            actor: session.subjectId,
+            action: 'files.chmod',
+            hostId: host.id,
+            outcome: result.ok ? 'allow' : 'deny',
+            detail: result.ok ? `${normalizeRemotePath(target)} → ${mode}` : result.reason,
+          })
+          sendJson(response, result.ok ? 200 : 400, result.ok ? result : { error: result.reason })
+          return
+        }
+
+        if (sub === 'touch') {
+          const parent = asString(payload.path)
+          const name = asString(payload.name)
+          const result = await files.touch(host, parent, name)
+          audit.record({
+            actor: session.subjectId,
+            action: 'files.touch',
+            hostId: host.id,
+            outcome: result.ok ? 'allow' : 'deny',
+            detail: result.ok ? `${normalizeRemotePath(parent)}/${name}` : result.reason,
+          })
+          sendJson(response, result.ok ? 200 : 400, result.ok ? result : { error: result.reason })
+          return
+        }
+      } catch (error) {
+        sendJson(response, 400, { error: (error as Error).message })
+        return
+      }
+    }
   }
 
     sendJson(response, 404, { error: 'unknown endpoint' })

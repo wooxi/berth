@@ -55,6 +55,17 @@ export type AuditEvent = {
   detail?: string
 }
 
+export type FilePreview = {
+  ok: true
+  path: string
+  content: string
+  size: number
+  truncated: boolean
+  binary: boolean
+}
+
+export type FileOpResult = { ok: true }
+
 export type ApiError = { error: string }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -85,6 +96,55 @@ export const api = {
     request<{ lines: string[] }>(`/api/hosts/${encodeURIComponent(hostId)}/logs?unit=${encodeURIComponent(unit)}&lines=${lines}`),
   getFiles: (hostId: string, path: string) =>
     request<{ ok: true; path: string; entries: FileEntry[] }>(`/api/hosts/${encodeURIComponent(hostId)}/files?path=${encodeURIComponent(path)}`),
+  readFile: (hostId: string, path: string) =>
+    request<FilePreview>(`/api/hosts/${encodeURIComponent(hostId)}/files/read?path=${encodeURIComponent(path)}`),
+  saveFile: (hostId: string, path: string, content: string) =>
+    request<FileOpResult>(`/api/hosts/${encodeURIComponent(hostId)}/files/write`, {
+      method: 'PUT',
+      body: JSON.stringify({ path, content }),
+    }),
+  makeDir: (hostId: string, path: string, name: string) =>
+    request<FileOpResult>(`/api/hosts/${encodeURIComponent(hostId)}/files/mkdir`, {
+      method: 'POST',
+      body: JSON.stringify({ path, name }),
+    }),
+  renamePath: (hostId: string, from: string, to: string) =>
+    request<FileOpResult>(`/api/hosts/${encodeURIComponent(hostId)}/files/rename`, {
+      method: 'POST',
+      body: JSON.stringify({ from, to }),
+    }),
+  deletePath: (hostId: string, path: string, recursive = false) =>
+    request<FileOpResult>(`/api/hosts/${encodeURIComponent(hostId)}/files/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ path, recursive }),
+    }),
+  copyPath: (hostId: string, from: string, to: string) =>
+    request<FileOpResult>(`/api/hosts/${encodeURIComponent(hostId)}/files/copy`, {
+      method: 'POST',
+      body: JSON.stringify({ from, to }),
+    }),
+  movePath: (hostId: string, from: string, to: string) =>
+    request<FileOpResult>(`/api/hosts/${encodeURIComponent(hostId)}/files/move`, {
+      method: 'POST',
+      body: JSON.stringify({ from, to }),
+    }),
+  chmodPath: (hostId: string, path: string, mode: string) =>
+    request<FileOpResult>(`/api/hosts/${encodeURIComponent(hostId)}/files/chmod`, {
+      method: 'POST',
+      body: JSON.stringify({ path, mode }),
+    }),
+  touchFile: (hostId: string, path: string, name: string) =>
+    request<FileOpResult>(`/api/hosts/${encodeURIComponent(hostId)}/files/touch`, {
+      method: 'POST',
+      body: JSON.stringify({ path, name }),
+    }),
+  uploadFile: (hostId: string, dir: string, name: string, file: File) =>
+    request<FileOpResult>(
+      `/api/hosts/${encodeURIComponent(hostId)}/files/upload?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(name)}`,
+      { method: 'POST', body: file, headers: { 'content-type': 'application/octet-stream' } },
+    ),
+  downloadUrl: (hostId: string, path: string) =>
+    `/api/hosts/${encodeURIComponent(hostId)}/files/download?path=${encodeURIComponent(path)}`,
   getAudit: (limit = 100) => request<{ events: AuditEvent[] }>(`/api/audit?limit=${limit}`),
 }
 
