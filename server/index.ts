@@ -4,7 +4,7 @@ import { extname, join, normalize, resolve } from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { createAuditSink, type AuditSink } from './audit.ts'
 import { createSessionStore, hashPassword, verifyPassword, type SessionStore } from './auth.ts'
-import { loadConfig, type YardConfig, type YardHostConfig } from './config.ts'
+import { loadConfig, type BerthConfig, type BerthHostConfig } from './config.ts'
 import { createCollector, createContainerCollector, createLogCollector } from './collectors.ts'
 import { createFileService, isProtectedPath, normalizeRemotePath } from './files.ts'
 import { openSshConnection } from './ssh.ts'
@@ -13,7 +13,7 @@ const STATIC_ROOT = process.env.YARD_STATIC_ROOT ?? '/app/public'
 const PORT = Number(process.env.PORT ?? '8080')
 const HOST = process.env.YARD_BIND ?? '127.0.0.1'
 
-const config: YardConfig = loadConfig()
+const config: BerthConfig = loadConfig()
 const audit: AuditSink = createAuditSink(config.auditPath)
 const sessions: SessionStore = createSessionStore(config.sessionSecret)
 const collector = createCollector(config.privateKeyPath)
@@ -82,7 +82,7 @@ async function readBody(request: IncomingMessage, limit = 64 * 1024): Promise<st
   return Buffer.concat(chunks).toString('utf8')
 }
 
-function findHost(hostId: string): YardHostConfig | null {
+function findHost(hostId: string): BerthHostConfig | null {
   return config.hosts.find((host) => host.id === hostId && host.enabled) ?? null
 }
 
@@ -460,7 +460,7 @@ server.on('upgrade', (request, socket, head) => {
   })
 })
 
-async function handleTerminal(ws: WebSocket, host: YardHostConfig, subjectId: string): Promise<void> {
+async function handleTerminal(ws: WebSocket, host: BerthHostConfig, subjectId: string): Promise<void> {
   const result = await openSshConnection(host, { privateKeyPath: config.privateKeyPath })
   if (!result.ok) {
     audit.record({ actor: subjectId, action: 'terminal.open', hostId: host.id, outcome: 'deny', detail: result.reason })
@@ -516,5 +516,5 @@ async function handleTerminal(ws: WebSocket, host: YardHostConfig, subjectId: st
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`yard server listening on ${HOST}:${PORT} with ${config.hosts.length} registered hosts`)
+  console.log(`berth server listening on ${HOST}:${PORT} with ${config.hosts.length} registered hosts`)
 })

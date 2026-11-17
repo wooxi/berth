@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { Client } from 'ssh2'
-import type { YardHostConfig } from './config.ts'
+import type { BerthHostConfig } from './config.ts'
 
 export type HostKeyCheck =
   | { ok: true; fingerprint: string }
@@ -24,7 +24,7 @@ export function checkHostKey(pinned: string, keyBlob: Buffer): HostKeyCheck {
 }
 
 export type SshConnection = {
-  host: YardHostConfig
+  host: BerthHostConfig
   client: Client
   fingerprint: string
 }
@@ -38,7 +38,7 @@ export type SshClientOptions = {
   connectTimeoutMs?: number
 }
 
-export function openSshConnection(host: YardHostConfig, options: SshClientOptions): Promise<SshConnectResult> {
+export function openSshConnection(host: BerthHostConfig, options: SshClientOptions): Promise<SshConnectResult> {
   return new Promise((resolve) => {
     const client = new Client()
     let settled = false

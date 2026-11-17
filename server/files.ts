@@ -1,5 +1,5 @@
 import type { SFTPWrapper } from 'ssh2'
-import type { YardHostConfig } from './config.ts'
+import type { BerthHostConfig } from './config.ts'
 import { openSshConnection, runCommand } from './ssh.ts'
 
 export type FileEntry = {
@@ -74,7 +74,7 @@ export function looksBinary(buffer: Buffer): boolean {
 
 type Handle = { client: import('ssh2').Client; sftp: SFTPWrapper }
 
-async function withSftp<T>(host: YardHostConfig, keyPath: string, run: (handle: Handle) => Promise<T>): Promise<T | { ok: false; reason: string }> {
+async function withSftp<T>(host: BerthHostConfig, keyPath: string, run: (handle: Handle) => Promise<T>): Promise<T | { ok: false; reason: string }> {
   const result = await openSshConnection(host, { privateKeyPath: keyPath })
   if (!result.ok) return { ok: false, reason: result.reason }
   const client = result.connection.client
@@ -145,18 +145,18 @@ async function copyRecursive(sftp: SftpLike, from: string, to: string, depth = 0
 }
 
 export type FileService = {
-  list: (host: YardHostConfig, path: string) => Promise<FileListing>
-  read: (host: YardHostConfig, path: string) => Promise<FileRead>
-  write: (host: YardHostConfig, path: string, content: string) => Promise<FileOp>
-  mkdir: (host: YardHostConfig, parent: string, name: string) => Promise<FileOp>
-  rename: (host: YardHostConfig, from: string, to: string) => Promise<FileOp>
-  remove: (host: YardHostConfig, path: string, recursive?: boolean) => Promise<FileOp>
-  copy: (host: YardHostConfig, from: string, to: string) => Promise<FileOp>
-  move: (host: YardHostConfig, from: string, to: string) => Promise<FileOp>
-  chmod: (host: YardHostConfig, path: string, mode: string) => Promise<FileOp>
-  touch: (host: YardHostConfig, directory: string, name: string) => Promise<FileOp>
-  upload: (host: YardHostConfig, directory: string, name: string, data: Buffer) => Promise<FileOp>
-  openDownload: (host: YardHostConfig, path: string) => Promise<{ ok: true; stream: NodeJS.ReadableStream; size: number } | { ok: false; reason: string }>
+  list: (host: BerthHostConfig, path: string) => Promise<FileListing>
+  read: (host: BerthHostConfig, path: string) => Promise<FileRead>
+  write: (host: BerthHostConfig, path: string, content: string) => Promise<FileOp>
+  mkdir: (host: BerthHostConfig, parent: string, name: string) => Promise<FileOp>
+  rename: (host: BerthHostConfig, from: string, to: string) => Promise<FileOp>
+  remove: (host: BerthHostConfig, path: string, recursive?: boolean) => Promise<FileOp>
+  copy: (host: BerthHostConfig, from: string, to: string) => Promise<FileOp>
+  move: (host: BerthHostConfig, from: string, to: string) => Promise<FileOp>
+  chmod: (host: BerthHostConfig, path: string, mode: string) => Promise<FileOp>
+  touch: (host: BerthHostConfig, directory: string, name: string) => Promise<FileOp>
+  upload: (host: BerthHostConfig, directory: string, name: string, data: Buffer) => Promise<FileOp>
+  openDownload: (host: BerthHostConfig, path: string) => Promise<{ ok: true; stream: NodeJS.ReadableStream; size: number } | { ok: false; reason: string }>
 }
 
 export function createFileService(privateKeyPath: string): FileService {

@@ -1,4 +1,4 @@
-import type { YardHostConfig } from './config.ts'
+import type { BerthHostConfig } from './config.ts'
 import { openSshConnection, runCommand, type SshConnection } from './ssh.ts'
 
 export type HostSnapshot = {
@@ -7,7 +7,7 @@ export type HostSnapshot = {
   address: string
   group: string
   role: string
-  runtime: YardHostConfig['runtime']
+  runtime: BerthHostConfig['runtime']
   systemd: boolean
   status: 'online' | 'offline' | 'error'
   error?: string
@@ -95,7 +95,7 @@ export function parseMetrics(output: string): Partial<HostSnapshot> {
 }
 
 export type Collector = {
-  collect: (host: YardHostConfig) => Promise<HostSnapshot>
+  collect: (host: BerthHostConfig) => Promise<HostSnapshot>
 }
 
 export function createCollector(privateKeyPath: string): Collector {
@@ -142,7 +142,7 @@ export type ContainerInfo = {
 }
 
 export type ContainerCollector = {
-  list: (host: YardHostConfig) => Promise<{ ok: true; containers: ContainerInfo[] } | { ok: false; reason: string }>
+  list: (host: BerthHostConfig) => Promise<{ ok: true; containers: ContainerInfo[] } | { ok: false; reason: string }>
 }
 
 const CONTAINER_SCRIPT = (runtime: 'docker' | 'podman' | 'none') => `LC_ALL=C ${runtime === 'podman' ? 'podman' : 'docker'} ps -a --format '{{json .}}' 2>/dev/null || true`
@@ -184,7 +184,7 @@ export function createContainerCollector(privateKeyPath: string): ContainerColle
 }
 
 export type LogCollector = {
-  tail: (host: YardHostConfig, unit: string, lines: number) => Promise<{ ok: true; lines: string[] } | { ok: false; reason: string }>
+  tail: (host: BerthHostConfig, unit: string, lines: number) => Promise<{ ok: true; lines: string[] } | { ok: false; reason: string }>
 }
 
 export function createLogCollector(privateKeyPath: string): LogCollector {

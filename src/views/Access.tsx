@@ -98,7 +98,7 @@ export function AccessView({
           </div>
           <div className="perm-table-wrap" role="region" aria-label="权限级别说明" tabIndex={0}>
             <table className="perm-table">
-              <caption className="sr-only">Yard 的四个权限级别及其计划授权范围</caption>
+              <caption className="sr-only">Berth 的四个权限级别及其计划授权范围</caption>
               <thead>
                 <tr><th scope="col">级别</th><th scope="col">计划授权范围</th></tr>
               </thead>

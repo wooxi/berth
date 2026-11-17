@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { hostname } from 'node:os'
 
-export type YardHostConfig = {
+export type BerthHostConfig = {
   id: string
   label: string
   address: string
@@ -15,8 +15,8 @@ export type YardHostConfig = {
   enabled: boolean
 }
 
-export type YardConfig = {
-  hosts: YardHostConfig[]
+export type BerthConfig = {
+  hosts: BerthHostConfig[]
   auditPath: string
   privateKeyPath: string
   knownHostsPath: string
@@ -30,13 +30,13 @@ function requireEnv(name: string, fallback?: string): string {
   return value
 }
 
-export function loadConfig(): YardConfig {
+export function loadConfig(): BerthConfig {
   const hostsPath = requireEnv('YARD_HOSTS_FILE', '/app/config/hosts.json')
   const parsed = JSON.parse(readFileSync(hostsPath, 'utf8')) as { hosts?: unknown }
   if (!Array.isArray(parsed.hosts)) throw new Error('hosts.json must contain a hosts array')
 
-  const hosts: YardHostConfig[] = parsed.hosts.map((entry, index) => {
-    const host = entry as Partial<YardHostConfig>
+  const hosts: BerthHostConfig[] = parsed.hosts.map((entry, index) => {
+    const host = entry as Partial<BerthHostConfig>
     if (typeof host.id !== 'string' || !host.id) throw new Error(`host ${index} is missing an id`)
     if (typeof host.address !== 'string' || !host.address) throw new Error(`host ${host.id} is missing an address`)
     if (typeof host.fingerprint !== 'string' || !host.fingerprint.startsWith('SHA256:')) {
