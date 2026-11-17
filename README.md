@@ -1,6 +1,6 @@
-# Yard
+# Berth
 
-独立、自托管的服务器管理工作台。项目从零创建，不 fork Termix，不依赖其代码；交互设计参考 Termix 的权限分级与终端体验。
+独立、自托管的私有服务器泊位。项目从零创建，不 fork Termix，不依赖其代码。视觉令牌见 [DESIGN.md](./DESIGN.md)。
 
 ## 架构
 

@@ -1,4 +1,4 @@
-import { Activity, Cpu, MemoryStick, Server } from 'lucide-react'
+import { Activity, Server } from 'lucide-react'
 import type { AuditEvent, HostSnapshot } from '../api'
 
 type Props = {
@@ -6,12 +6,11 @@ type Props = {
   audit: AuditEvent[]
   error: string
   loading: boolean
-  onOpenConsole: (hostId: string, tab: 'terminal' | 'files' | 'containers' | 'logs') => void
-  onOpenHosts: () => void
+  onOpenConsole: (hostId: string, tab?: 'terminal' | 'files' | 'containers' | 'logs') => void
   onOpenAccess: () => void
 }
 
-export function OverviewView({ hosts, audit, error, loading, onOpenConsole, onOpenHosts, onOpenAccess }: Props) {
+export function OverviewView({ hosts, audit, error, loading, onOpenConsole, onOpenAccess }: Props) {
   const online = hosts.filter((host) => host.status === 'online')
   const mean = (pick: (host: HostSnapshot) => number | undefined) =>
     online.length ? Math.round(online.reduce((sum, host) => sum + (pick(host) ?? 0), 0) / online.length) : 0
@@ -23,75 +22,81 @@ export function OverviewView({ hosts, audit, error, loading, onOpenConsole, onOp
 
   return (
     <>
-      <div className="page-heading">
+      <div className="page-head">
         <div>
-          <h1>集群概览</h1>
-          <p className="page-detail">
-            {error
-              ? error
-              : `${online.length} 台在线，每 30 秒采集一次`}
-          </p>
+          <h1>概览</h1>
+          <p className="page-sub">{error || '全部已登记服务器的当前状态'}</p>
         </div>
-        <div className="heading-actions">
-          <button className="button button-secondary" type="button" onClick={onOpenHosts}>
-            全部主机
-          </button>
+        <div className="page-head-actions">
+          <span className="live-pill"><span aria-hidden="true" />{loading ? '采集中' : '实时'}</span>
         </div>
       </div>
 
-      <dl className="summary-strip">
-        <div className="summary-cell">
-          <dt>在线</dt>
-          <dd>{String(online.length).padStart(2, '0')}<small>/ {hosts.length}</small></dd>
-        </div>
-        <div className="summary-cell"><dt>平均 CPU</dt><dd>{avgCpu}<small>%</small></dd></div>
-        <div className="summary-cell"><dt>平均内存</dt><dd>{avgMem}<small>%</small></dd></div>
-        <div className="summary-cell"><dt>平均磁盘</dt><dd>{avgDisk}<small>%</small></dd></div>
-      </dl>
+      <div className="kpi-row">
+        <article className="kpi">
+          <div className="kpi-label"><i data-tone={issues ? 'warn' : 'ok'} aria-hidden="true" />在线</div>
+          <div className="kpi-value">{online.length}<small>/ {hosts.length}</small></div>
+          <div className="kpi-note">{issues ? `${issues} 台待查` : '全部正常'}</div>
+        </article>
+        <article className="kpi">
+          <div className="kpi-label"><i aria-hidden="true" />平均 CPU</div>
+          <div className="kpi-value">{avgCpu}<small>%</small></div>
+          <div className="kpi-note">在线主机均值</div>
+        </article>
+        <article className="kpi">
+          <div className="kpi-label"><i aria-hidden="true" />平均内存</div>
+          <div className="kpi-value">{avgMem}<small>%</small></div>
+          <div className="kpi-note">在线主机均值</div>
+        </article>
+        <article className="kpi">
+          <div className="kpi-label"><i aria-hidden="true" />平均磁盘</div>
+          <div className="kpi-value">{avgDisk}<small>%</small></div>
+          <div className="kpi-note">根分区</div>
+        </article>
+      </div>
 
-      <div className="overview-grid">
-        <section aria-labelledby="rack-title">
-          <div className="section-title">
-            <h2 id="rack-title">主机</h2>
-            <small>按分组</small>
-            <span className="count">{hosts.length} 台</span>
+      <div className="split">
+        <section aria-labelledby="roster-title">
+          <div className="section-head">
+            <h2 id="roster-title">服务器</h2>
+            <span className="figure">{hosts.length}</span>
           </div>
 
-          <div className="rack">
-            <div className="rack-head" aria-hidden="true">
+          <div className="roster">
+            <div className="roster-head" aria-hidden="true">
               <span>主机</span>
               <span>状态</span>
-              <span>平均负载</span>
+              <span>负载</span>
               <span>资源</span>
               <span />
             </div>
 
             {hosts.map((host) => (
-              <div className="rack-row" key={host.hostId}>
-                <span className="rack-lamp" data-state={host.status} aria-hidden="true" />
-                <span className="rack-name">
+              <div className="host-row" key={host.hostId}>
+                <span className="host-dot" data-state={host.status} aria-hidden="true" />
+                <span className="host-name-cell">
                   <b>{host.label}</b>
                   <small>{host.address}</small>
                 </span>
-                <span className="rack-state" data-state={host.status}>
+                <span className="state-text" data-state={host.status}>
                   {host.status === 'online' ? '在线' : host.status === 'error' ? '连接失败' : '离线'}
                 </span>
-                <span className="rack-load">{host.load ? host.load[0].toFixed(2) : '—'}</span>
+                <span className="load-cell">{host.load ? host.load[0].toFixed(2) : '—'}</span>
                 <div className="gauges">
                   <Gauge label="CPU" value={host.cpuPercent} />
                   <Gauge label="内存" value={host.memoryPercent} />
                   <Gauge label="磁盘" value={host.diskPercent} />
                 </div>
-                <button className="rack-open" type="button" onClick={() => onOpenConsole(host.hostId, 'terminal')}>
+                <button className="row-open" type="button" onClick={() => onOpenConsole(host.hostId)}>
                   打开
                 </button>
               </div>
             ))}
 
             {hosts.length === 0 && (
-              <div className="term-empty" style={{ minBlockSize: 180 }}>
+              <div className="term-empty">
                 <Server size={20} aria-hidden="true" />
-                <span>{loading ? '正在采集…' : error || '没有已登记的主机'}</span>
+                <span>{loading ? '正在采集…' : error || '还没有登记主机'}</span>
               </div>
             )}
           </div>
@@ -99,28 +104,24 @@ export function OverviewView({ hosts, audit, error, loading, onOpenConsole, onOp
           {issues > 0 && (
             <p className="note" data-tone="warn">
               <Activity size={13} aria-hidden="true" />
-              <span>{issues} 台主机未响应。打开主机可查看连接错误。</span>
+              <span>{issues} 台主机未响应，打开可查看连接错误。</span>
             </p>
           )}
         </section>
 
-        <aside className="sidecol">
-          <section aria-labelledby="belt-title">
-            <div className="section-title">
-              <h2 id="belt-title">资源</h2>
-              <span className="count">{online.length} 台</span>
+        <aside className="side-stack">
+          <section aria-labelledby="res-title">
+            <div className="section-head">
+              <h2 id="res-title">资源</h2>
+              <span className="figure">{online.length}</span>
             </div>
-            <div className="logbook">
+            <div className="log-list">
               {online.map((host) => (
-                <div className="logbook-row" key={host.hostId}>
-                  <span className="logbook-flag" data-ok="true" aria-hidden="true" />
-                  <span className="logbook-main">
+                <div className="log-row" key={host.hostId}>
+                  <span className="log-dot" data-ok="true" aria-hidden="true" />
+                  <span className="log-main">
                     <b>{host.label}</b>
-                    <small>
-                      <Cpu size={10} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> {host.cpuPercent ?? '—'}%
-                      {'  '}
-                      <MemoryStick size={10} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> {host.memoryPercent ?? '—'}%
-                    </small>
+                    <small>{host.cpuPercent ?? '—'}% CPU · {host.memoryPercent ?? '—'}% 内存</small>
                   </span>
                   <time>{host.load ? host.load[0].toFixed(2) : '—'}</time>
                 </div>
@@ -130,17 +131,17 @@ export function OverviewView({ hosts, audit, error, loading, onOpenConsole, onOp
           </section>
 
           <section aria-labelledby="log-title">
-            <div className="section-title">
+            <div className="section-head">
               <h2 id="log-title">最近操作</h2>
-              <span className="count">{audit.length}</span>
+              <span className="figure">{audit.length}</span>
             </div>
-            <div className="logbook">
+            <div className="log-list">
               {audit.slice(0, 7).map((event, index) => (
-                <div className="logbook-row" key={`${event.at}-${index}`}>
-                  <span className="logbook-flag" data-ok={event.outcome === 'allow'} aria-hidden="true" />
-                  <span className="logbook-main">
+                <div className="log-row" key={`${event.at}-${index}`}>
+                  <span className="log-dot" data-ok={event.outcome === 'allow'} aria-hidden="true" />
+                  <span className="log-main">
                     <b>{event.action}</b>
-                    <small>{event.hostId ?? '会话'}{event.detail ? `：${event.detail}` : ''}</small>
+                    <small>{event.hostId ?? '会话'}</small>
                   </span>
                   <time>{new Date(event.at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>
                 </div>

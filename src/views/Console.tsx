@@ -28,7 +28,7 @@ export function ConsoleView({
   return (
     <div className="console">
       {/* Sticky identity bar: never loses context when switching tabs. */}
-      <header className="identity-bar" aria-label={`${host.label} 身份信息`}>
+      <header className="identity" aria-label={`${host.label} 身份信息`}>
         <div className="identity-main">
           <span className="identity-glyph" aria-hidden="true"><Server size={17} /></span>
           <div className="identity-text">

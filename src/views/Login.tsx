@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
-import { KeyRound, Network } from 'lucide-react'
 import { api } from '../api'
+import { BerthMark } from '../components/BerthMark'
 
 export function LoginView({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState('')
@@ -25,12 +25,12 @@ export function LoginView({ onLogin }: { onLogin: () => void }) {
   return (
     <div className="login-shell">
       <form className="login-card" method="post" onSubmit={submit} aria-labelledby="login-title">
-        <span className="brand-mark login-mark" aria-hidden="true"><Network size={18} strokeWidth={2.2} /></span>
-        <p className="eyebrow">PRIVATE WORKSPACE</p>
-        <h1 id="login-title">Yard</h1>
+        <BerthMark size={34} title="Berth" />
+        <h1 id="login-title">Berth</h1>
+        <p className="login-lead">私有服务器泊位</p>
 
         <div className="field">
-          <label htmlFor="login-password">管理口令</label>
+          <label htmlFor="login-password">口令</label>
           <input
             id="login-password"
             name="password"
@@ -45,12 +45,11 @@ export function LoginView({ onLogin }: { onLogin: () => void }) {
           />
           {error
             ? <p id="login-error" className="form-error" role="alert">{error}</p>
-            : <span className="field-hint">会话有效期 8 小时，仅限内网</span>}
+            : <span className="field-hint">会话 8 小时，仅限内网</span>}
         </div>
 
         <button className="button button-primary login-submit" type="submit" disabled={busy}>
-          <KeyRound size={15} aria-hidden="true" />
-          {busy ? '验证中…' : '登录'}
+          {busy ? '验证中…' : '进入'}
         </button>
       </form>
     </div>

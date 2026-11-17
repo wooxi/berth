@@ -13,13 +13,12 @@ export function AccessView({
 }) {
   return (
     <>
-      <div className="page-heading">
+      <div className="page-head">
         <div>
-          <p className="eyebrow">SECURITY / WORKSPACE</p>
-          <h1>凭据与权限</h1>
-          <p className="page-detail">单管理员模式 · SSH 私钥仅由服务端持有</p>
+            <h1>凭据与权限</h1>
+          <p className="page-sub">单管理员模式 · SSH 私钥仅由服务端持有</p>
         </div>
-        <div className="heading-actions">
+        <div className="page-head-actions">
           <button className="button button-secondary" type="button" onClick={onLogout}>
             <LogOut size={14} aria-hidden="true" />退出登录
           </button>
@@ -28,7 +27,7 @@ export function AccessView({
 
       <div className="access-grid">
         <section className="panel" aria-labelledby="identity-title">
-          <div className="panel-header">
+          <div className="panel-head">
             <div>
               <div className="section-title">
                 <h2 id="identity-title">当前身份</h2>
@@ -55,7 +54,7 @@ export function AccessView({
         </section>
 
         <section className="panel" aria-labelledby="credential-title">
-          <div className="panel-header">
+          <div className="panel-head">
             <div>
               <div className="section-title">
                 <h2 id="credential-title">凭据关联</h2>
@@ -87,7 +86,7 @@ export function AccessView({
         </section>
 
         <section className="panel" style={{ gridColumn: '1 / -1' }} aria-labelledby="permissions-title">
-          <div className="panel-header">
+          <div className="panel-head">
             <div>
               <div className="section-title">
                 <h2 id="permissions-title">权限级别</h2>
