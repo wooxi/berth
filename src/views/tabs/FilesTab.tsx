@@ -58,12 +58,12 @@ export function FilesTab({ host, notify }: { host: HostSnapshot; notify: (messag
           </button>
         </div>
         <span className="toolbar-sep" aria-hidden="true" />
-        <div className="toolbar-group" style={{ flex: 1, minInlineSize: 0 }}>
-          <HardDrive size={14} aria-hidden="true" style={{ color: 'var(--text-faint)', flex: 'none' }} />
-          <nav className="breadcrumb" aria-label="当前路径" style={{ overflowX: 'auto' }}>
+        <div className="toolbar-group path-group">
+          <HardDrive size={14} aria-hidden="true" className="path-icon" />
+          <nav className="breadcrumb" aria-label="当前路径">
             <button type="button" onClick={() => void load('/')}>/</button>
             {segments.map((segment, index) => (
-              <span key={`${segment}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span className="crumb" key={`${segment}-${index}`}>
                 <ChevronRight size={12} aria-hidden="true" />
                 <button type="button" onClick={() => void load(`/${segments.slice(0, index + 1).join('/')}`)}>{segment}</button>
               </span>
@@ -86,7 +86,7 @@ export function FilesTab({ host, notify }: { host: HostSnapshot; notify: (messag
             <span>名称</span><span>大小</span><span>修改时间</span><span>权限</span>
           </div>
           <form
-            style={{ display: 'flex', gap: 6, padding: 8, borderBlockEnd: '1px solid var(--line-soft)' }}
+            className="file-pathbar"
             onSubmit={(event) => {
               event.preventDefault()
               void load(inputPath)
@@ -99,18 +99,6 @@ export function FilesTab({ host, notify }: { host: HostSnapshot; notify: (messag
               onChange={(event) => setInputPath(event.currentTarget.value)}
               spellCheck={false}
               autoComplete="off"
-              style={{
-                flex: 1,
-                minInlineSize: 0,
-                blockSize: 28,
-                paddingInline: 8,
-                border: '1px solid var(--line)',
-                borderRadius: 5,
-                background: 'var(--bg-deep)',
-                color: 'var(--text-soft)',
-                fontFamily: 'var(--mono)',
-                fontSize: 11,
-              }}
             />
             <button className="button button-secondary compact-button" type="submit">跳转</button>
           </form>
@@ -144,7 +132,7 @@ export function FilesTab({ host, notify }: { host: HostSnapshot; notify: (messag
         </div>
 
         <aside className="file-detail" aria-label="选中条目详情">
-          <p className="eyebrow">SELECTED</p>
+          <p className="file-detail-hint">已选中</p>
           <h3>{selected?.name ?? '未选择'}</h3>
           <dl>
             <div><dt>主机</dt><dd>{host.hostId}</dd></div>
@@ -154,7 +142,7 @@ export function FilesTab({ host, notify }: { host: HostSnapshot; notify: (messag
             <div><dt>所有者</dt><dd>{selected?.owner ?? '—'}</dd></div>
             <div><dt>修改</dt><dd>{selected?.modified ?? '—'}</dd></div>
           </dl>
-          <p className="callout" style={{ margin: 'auto 0 0' }}>
+          <p className="note" style={{ marginBlockStart: 'auto' }}>
             <LockKeyhole size={13} aria-hidden="true" />
             <span>当前为只读浏览，写入与传输待开放。</span>
           </p>

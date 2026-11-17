@@ -142,13 +142,19 @@ const server = createServer(async (request, response) => {
 
   if (pathname.startsWith('/api/')) {
     const session = currentSession(request)
-    if (!session) {
-      sendJson(response, 401, { error: 'authentication required' })
+
+    // 会话探测是公开的：未登录时返回布尔值而不是 401，避免前端控制台刷网络错误。
+    if (pathname === '/api/session') {
+      if (!session) {
+        sendJson(response, 200, { authenticated: false })
+        return
+      }
+      sendJson(response, 200, { authenticated: true, subjectId: session.subjectId, expiresAt: session.expiresAt })
       return
     }
 
-    if (pathname === '/api/session') {
-      sendJson(response, 200, { subjectId: session.subjectId, expiresAt: session.expiresAt })
+    if (!session) {
+      sendJson(response, 401, { error: 'authentication required' })
       return
     }
 

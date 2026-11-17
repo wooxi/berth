@@ -73,7 +73,7 @@ export function ContainersTab({ host, notify }: { host: HostSnapshot; notify: (m
               <Box size={15} />
             </span>
             <div className="ctr-name">
-              <strong>{container.name}</strong>
+              <b>{container.name}</b>
               <small>{container.image}</small>
             </div>
             <div className="ctr-meta">

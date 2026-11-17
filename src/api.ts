@@ -78,7 +78,7 @@ export const api = {
   async logout(): Promise<void> {
     await request('/api/logout', { method: 'POST' })
   },
-  getSession: () => request<{ subjectId: string; expiresAt: number }>('/api/session'),
+  getSession: () => request<{ authenticated: boolean; subjectId?: string; expiresAt?: number }>('/api/session'),
   getHosts: () => request<{ hosts: HostSnapshot[] }>('/api/hosts'),
   getContainers: (hostId: string) => request<{ containers: ContainerInfo[] }>(`/api/hosts/${encodeURIComponent(hostId)}/containers`),
   getLogs: (hostId: string, unit: string, lines: number) =>

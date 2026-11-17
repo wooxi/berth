@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   Box,
@@ -6,7 +6,6 @@ import {
   Folder,
   LayoutDashboard,
   LogOut,
-  Network,
   ScrollText,
   Server,
   ShieldCheck,
@@ -22,11 +21,16 @@ import { AccessView } from './views/Access'
 import { LoginView } from './views/Login'
 
 type View = 'overview' | 'hosts' | 'console' | 'access'
-
 type NavEntry = { id: string; label: string; icon: LucideIcon; run: () => void; badge?: number }
 
-const HISTORY_LIMIT = 24
 const POLL_MS = 30000
+
+const TAB_LABEL: Record<ConsoleTab, string> = {
+  terminal: '终端',
+  files: '文件',
+  containers: '容器',
+  logs: '日志',
+}
 
 function App() {
   const [authed, setAuthed] = useState<boolean | null>(null)
@@ -40,10 +44,6 @@ function App() {
   const [query, setQuery] = useState('')
   const [toast, setToast] = useState('')
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [now, setNow] = useState(() => new Date())
-
-  const histories = useRef<Map<string, number[]>>(new Map())
-  const [historyVersion, setHistoryVersion] = useState(0)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -51,14 +51,6 @@ function App() {
       const result = await api.getHosts()
       setHosts(result.hosts)
       setError('')
-      for (const host of result.hosts) {
-        if (host.cpuPercent === undefined) continue
-        const series = histories.current.get(host.hostId) ?? []
-        series.push(host.cpuPercent)
-        if (series.length > HISTORY_LIMIT) series.shift()
-        histories.current.set(host.hostId, series)
-      }
-      setHistoryVersion((current) => current + 1)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '采集失败')
     } finally {
@@ -67,7 +59,9 @@ function App() {
   }, [])
 
   useEffect(() => {
-    api.getSession().then(() => setAuthed(true)).catch(() => setAuthed(false))
+    api.getSession()
+      .then((session) => setAuthed(session.authenticated))
+      .catch(() => setAuthed(false))
   }, [])
 
   useEffect(() => {
@@ -75,11 +69,7 @@ function App() {
     void refresh()
     api.getAudit(30).then((result) => setAudit(result.events)).catch(() => {})
     const timer = window.setInterval(() => { void refresh() }, POLL_MS)
-    const clock = window.setInterval(() => setNow(new Date()), 60000)
-    return () => {
-      window.clearInterval(timer)
-      window.clearInterval(clock)
-    }
+    return () => window.clearInterval(timer)
   }, [authed, refresh])
 
   useEffect(() => {
@@ -88,13 +78,13 @@ function App() {
     return () => window.clearTimeout(timeout)
   }, [toast])
 
+  const activeHost = hosts.find((host) => host.hostId === consoleHostId) ?? hosts[0] ?? null
+
   useEffect(() => {
     if (authed !== true) return
-    const title = view === 'console'
-      ? `${hosts.find((host) => host.hostId === consoleHostId)?.label ?? '主机'} · Yard`
-      : view === 'overview' ? '概览 · Yard' : view === 'hosts' ? '主机 · Yard' : '凭据与权限 · Yard'
-    document.title = title
-  }, [view, consoleHostId, hosts, authed])
+    const name = view === 'console' && activeHost ? `${activeHost.label} · ${TAB_LABEL[consoleTab]}` : null
+    document.title = name ? `${name} — Yard` : view === 'overview' ? '概览 — Yard' : view === 'hosts' ? '主机 — Yard' : '凭据与权限 — Yard'
+  }, [view, consoleTab, activeHost, authed])
 
   useEffect(() => {
     if (authed !== true) return
@@ -123,16 +113,14 @@ function App() {
     await api.logout().catch(() => {})
     setAuthed(false)
     setHosts([])
-    histories.current.clear()
   }, [])
 
   const onlineCount = hosts.filter((host) => host.status === 'online').length
   const issues = hosts.length - onlineCount
-  const activeHost = hosts.find((host) => host.hostId === consoleHostId) ?? hosts[0] ?? null
 
   const openTab = useCallback((tab: ConsoleTab) => {
     if (!activeHost) {
-      setToast('尚未登记任何主机')
+      setToast('还没有登记主机')
       return
     }
     openConsole(activeHost.hostId, tab)
@@ -140,14 +128,14 @@ function App() {
 
   const navGroups = useMemo<{ label: string; items: NavEntry[] }[]>(() => [
     {
-      label: 'WORKSPACE',
+      label: '工作',
       items: [
         { id: 'overview', label: '概览', icon: LayoutDashboard, run: () => setView('overview') },
         { id: 'hosts', label: '主机', icon: Server, run: () => setView('hosts'), badge: issues || undefined },
       ],
     },
     {
-      label: 'OPERATE',
+      label: '操作',
       items: [
         { id: 'terminal', label: '终端', icon: Terminal, run: () => openTab('terminal') },
         { id: 'files', label: '文件', icon: Folder, run: () => openTab('files') },
@@ -160,13 +148,8 @@ function App() {
   const activeNavId = view === 'console' ? consoleTab : view
 
   if (authed === null) {
-    return (
-      <div className="login-shell">
-        <p className="page-detail">加载中…</p>
-      </div>
-    )
+    return <div className="login-shell"><p className="page-detail">加载中…</p></div>
   }
-
   if (authed === false) {
     return <LoginView onLogin={() => setAuthed(true)} />
   }
@@ -177,28 +160,43 @@ function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="应用侧栏">
+      <header className="brandbar">
         <a className="brand" href="#overview" onClick={(event) => { event.preventDefault(); setView('overview') }}>
-          <span className="brand-mark" aria-hidden="true"><Network size={16} strokeWidth={2.2} /></span>
-          <span className="brand-copy"><strong>YARD</strong><small>SERVER CONTROL</small></span>
+          <span className="brand-word">Yard</span>
+          <span className="brand-sub">私有服务器</span>
         </a>
 
-        <button className="workspace-switcher" type="button" onClick={() => setView('hosts')}>
-          <span className="workspace-avatar">H</span>
-          <span className="workspace-copy">
-            <strong>Home lab</strong>
-            <small>{onlineCount}/{hosts.length} online</small>
+        <span className="brandbar-spacer" />
+
+        <span className="brandbar-stat">
+          <b>{onlineCount}</b>/{hosts.length} 在线
+        </span>
+        {issues > 0 && (
+          <span className="brandbar-stat" style={{ color: 'var(--warn)' }}>
+            <b>{issues}</b> 待查
           </span>
-          <ChevronRight size={14} aria-hidden="true" />
+        )}
+
+        <button className="command-trigger" type="button" onClick={() => setPaletteOpen(true)} aria-keyshortcuts="Meta+K Control+K">
+          <Terminal size={14} aria-hidden="true" />
+          <span>搜索主机或命令</span>
+          <kbd>⌘K</kbd>
         </button>
 
+        <button className="icon-button notification-button" type="button" aria-label={`${issues} 台主机待查`} onClick={() => setView('hosts')}>
+          <Activity size={16} aria-hidden="true" />
+          {issues > 0 && <i />}
+        </button>
+      </header>
+
+      <aside className="sidebar" aria-label="导航">
         <nav className="primary-nav" aria-label="主导航">
           {navGroups.map((group) => (
             <div className="nav-group" key={group.label}>
-              <p className="nav-label">{group.label}</p>
+              <p className="nav-group-title">{group.label}</p>
               {group.items.map((item) => {
                 const Icon = item.icon
-                const isActive = activeNavId === item.id && (view === 'overview' || view === 'hosts' || view === 'console')
+                const isActive = activeNavId === item.id && view !== 'access'
                 return (
                   <button
                     key={item.id}
@@ -207,7 +205,7 @@ function App() {
                     aria-current={isActive ? 'page' : undefined}
                     onClick={item.run}
                   >
-                    <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
+                    <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
                     <span>{item.label}</span>
                     {item.badge ? <span className="nav-count">{item.badge}</span> : null}
                   </button>
@@ -217,11 +215,10 @@ function App() {
           ))}
         </nav>
 
-        <div className="sidebar-bottom">
-          <div className="sidebar-health">
-            <span className="status-pip" />
-            <span>Control plane</span>
-            <strong>{loading ? '同步中' : issues ? `${onlineCount}/${hosts.length}` : '正常'}</strong>
+        <div className="sidebar-foot">
+          <div className="sidebar-status">
+            <span>{loading ? '正在采集' : '控制面'}</span>
+            <b>{onlineCount}/{hosts.length}</b>
           </div>
           <button
             type="button"
@@ -229,59 +226,46 @@ function App() {
             aria-current={view === 'access' ? 'page' : undefined}
             onClick={() => setView('access')}
           >
-            <ShieldCheck size={16} strokeWidth={1.8} aria-hidden="true" />
+            <ShieldCheck size={15} strokeWidth={1.8} aria-hidden="true" />
             <span>凭据与权限</span>
           </button>
-          <button className="profile-button" type="button" onClick={() => void logout()}>
-            <span className="profile-avatar">OW</span>
-            <span className="profile-copy"><strong>Owner</strong><small>退出登录</small></span>
-            <LogOut size={15} aria-hidden="true" />
+          <button className="owner-button" type="button" onClick={() => void logout()}>
+            <span className="owner-avatar" aria-hidden="true">OW</span>
+            <span className="owner-copy">
+              <strong>Owner</strong>
+              <small>退出登录</small>
+            </span>
+            <LogOut size={14} aria-hidden="true" />
           </button>
         </div>
       </aside>
 
       <main className="main-panel">
-        <header className="topbar">
+        <div className="topbar">
           <div className="breadcrumb">
             <button type="button" onClick={() => setView('overview')}>Home lab</button>
-            <ChevronRight size={13} aria-hidden="true" />
+            <ChevronRight size={12} aria-hidden="true" />
             {view === 'console' && activeHost ? (
               <>
                 <button type="button" onClick={() => setView('hosts')}>主机</button>
-                <ChevronRight size={13} aria-hidden="true" />
+                <ChevronRight size={12} aria-hidden="true" />
                 <strong>{activeHost.label}</strong>
-                <ChevronRight size={13} aria-hidden="true" />
-                <strong>{consoleTab === 'terminal' ? '终端' : consoleTab === 'files' ? '文件' : consoleTab === 'containers' ? '容器' : '日志'}</strong>
+                <ChevronRight size={12} aria-hidden="true" />
+                <strong>{TAB_LABEL[consoleTab]}</strong>
               </>
             ) : (
               <strong>{view === 'overview' ? '概览' : view === 'hosts' ? '主机' : '凭据与权限'}</strong>
             )}
           </div>
-
           <div className="topbar-actions">
-            <button className="command-trigger" type="button" onClick={() => setPaletteOpen(true)} aria-keyshortcuts="Meta+K Control+K">
-              <Terminal size={14} aria-hidden="true" />
-              <span>搜索主机或命令…</span>
-              <kbd>⌘K</kbd>
-            </button>
-            <span className="live-pill"><span aria-hidden="true" />LIVE</span>
-            <button
-              className="icon-button notification-button"
-              type="button"
-              aria-label={`异常主机 ${issues} 台`}
-              onClick={() => setView('hosts')}
-            >
-              <Activity size={16} aria-hidden="true" />
-              {issues > 0 && <i />}
-            </button>
+            <span className="live-pill"><span aria-hidden="true" />实时</span>
           </div>
-        </header>
+        </div>
 
         <div className="page-content">
           {view === 'overview' && (
             <OverviewView
               hosts={hosts}
-              histories={histories.current}
               audit={audit}
               error={error}
               loading={loading}
@@ -292,12 +276,7 @@ function App() {
           )}
 
           {view === 'hosts' && (
-            <HostsView
-              hosts={visibleHosts}
-              query={query}
-              onQuery={setQuery}
-              onOpenConsole={openConsole}
-            />
+            <HostsView hosts={visibleHosts} query={query} onQuery={setQuery} onOpenConsole={openConsole} />
           )}
 
           {view === 'console' && activeHost && (
@@ -312,8 +291,8 @@ function App() {
 
           {view === 'console' && !activeHost && (
             <div className="term-empty">
-              <Server size={22} aria-hidden="true" />
-              <span>没有可用的主机</span>
+              <Server size={20} aria-hidden="true" />
+              <span>没有可打开的主机</span>
             </div>
           )}
 
@@ -322,10 +301,7 @@ function App() {
           )}
         </div>
 
-        <span className="sr-only" aria-live="polite">
-          {`${onlineCount} 台主机在线，${issues} 台异常`}
-        </span>
-        <span className="sr-only" data-history={historyVersion} />
+        <span className="sr-only" aria-live="polite">{`${onlineCount} 台在线，${issues} 台待查`}</span>
       </main>
 
       <CommandPalette
@@ -337,12 +313,7 @@ function App() {
         onLogout={() => void logout()}
       />
 
-      {toast && (
-        <div className="toast" role="status">
-          <span>{toast}</span>
-        </div>
-      )}
-      <span className="sr-only">{now.getMinutes()}</span>
+      {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   )
 }

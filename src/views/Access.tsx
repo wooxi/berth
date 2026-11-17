@@ -30,9 +30,9 @@ export function AccessView({
         <section className="panel" aria-labelledby="identity-title">
           <div className="panel-header">
             <div>
-              <div className="panel-title-line">
+              <div className="section-title">
                 <h2 id="identity-title">当前身份</h2>
-                <span className="subtle-count">SESSION</span>
+                <span className="count">SESSION</span>
               </div>
               <p>工作区访问状态</p>
             </div>
@@ -41,25 +41,25 @@ export function AccessView({
           <div className="identity-card">
             <span className="profile-avatar">OW</span>
             <span>
-              <strong>Owner</strong>
+              <b>Owner</b>
               <small>本机部署 · 仅内网可达</small>
             </span>
             <span className="live-chip"><i aria-hidden="true" />已登录</span>
           </div>
           <div className="facts-list">
-            <div><span>已登记主机</span><strong>{hosts.length} 台</strong></div>
-            <div><span>SSH 凭据</span><strong>服务端只读挂载</strong></div>
-            <div><span>口令校验</span><strong>SHA-256 恒定时间比较</strong></div>
-            <div><span>审计</span><strong>全部操作留痕</strong></div>
+            <div><span>已登记主机</span><b>{hosts.length} 台</b></div>
+            <div><span>SSH 凭据</span><b>服务端只读挂载</b></div>
+            <div><span>口令校验</span><b>SHA-256 恒定时间比较</b></div>
+            <div><span>审计</span><b>全部操作留痕</b></div>
           </div>
         </section>
 
         <section className="panel" aria-labelledby="credential-title">
           <div className="panel-header">
             <div>
-              <div className="panel-title-line">
+              <div className="section-title">
                 <h2 id="credential-title">凭据关联</h2>
-                <span className="subtle-count">NO SECRETS IN UI</span>
+                <span className="count">NO SECRETS IN UI</span>
               </div>
               <p>凭据永不进入浏览器</p>
             </div>
@@ -72,7 +72,7 @@ export function AccessView({
             <div className="cred-row" key={host.hostId}>
               <span className="identity-glyph" style={{ inlineSize: 28, blockSize: 28 }} aria-hidden="true"><Server size={14} /></span>
               <span>
-                <strong>{host.label}</strong>
+                <b>{host.label}</b>
                 <small>{host.address} · {host.fingerprint.slice(0, 22)}…</small>
               </span>
               <span className="cred-state">已固定</span>
@@ -89,13 +89,13 @@ export function AccessView({
         <section className="panel" style={{ gridColumn: '1 / -1' }} aria-labelledby="permissions-title">
           <div className="panel-header">
             <div>
-              <div className="panel-title-line">
+              <div className="section-title">
                 <h2 id="permissions-title">权限级别</h2>
-                <span className="subtle-count">PREVIEW</span>
+                <span className="count">PREVIEW</span>
               </div>
               <p>Connect / View / Edit / Manage · 按主机与资源分别授权</p>
             </div>
-            <Users size={17} aria-hidden="true" style={{ color: 'var(--text-faint)' }} />
+            <Users size={17} aria-hidden="true" className="muted-icon" />
           </div>
           <div className="perm-table-wrap" role="region" aria-label="权限级别说明" tabIndex={0}>
             <table className="perm-table">

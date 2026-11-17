@@ -32,7 +32,7 @@ export function ConsoleView({
         <div className="identity-main">
           <span className="identity-glyph" aria-hidden="true"><Server size={17} /></span>
           <div className="identity-text">
-            <strong>{host.label}</strong>
+            <b>{host.label}</b>
             <small>{host.address} · {host.role}</small>
           </div>
           <span className={`status-badge status-${host.status}`}>
@@ -42,9 +42,9 @@ export function ConsoleView({
         </div>
 
         <div className="identity-facts">
-          <div className="fact"><span>OS</span><strong>{host.os ?? '—'}</strong></div>
-          <div className="fact"><span>UPTIME</span><strong>{host.uptime || '—'}</strong></div>
-          <div className="fact"><span>LOAD</span><strong>{host.load ? host.load.map((n) => n.toFixed(2)).join(' ') : '—'}</strong></div>
+          <div className="fact"><span>OS</span><b>{host.os ?? '—'}</b></div>
+          <div className="fact"><span>UPTIME</span><b>{host.uptime || '—'}</b></div>
+          <div className="fact"><span>LOAD</span><b>{host.load ? host.load.map((n) => n.toFixed(2)).join(' ') : '—'}</b></div>
           <span className="perm-chip" title="当前会话权限">
             <i aria-hidden="true" />
             View

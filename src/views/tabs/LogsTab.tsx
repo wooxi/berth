@@ -86,18 +86,9 @@ export function LogsTab({ host }: { host: HostSnapshot }) {
             <label className="sr-only" htmlFor={`unit-${host.hostId}`}>服务单元</label>
             <select
               id={`unit-${host.hostId}`}
+              className="toolbar-select"
               value={unit}
               onChange={(event) => setUnit(event.currentTarget.value)}
-              style={{
-                blockSize: 28,
-                paddingInline: 8,
-                border: '1px solid var(--line-strong)',
-                borderRadius: 5,
-                background: 'var(--bg-raised)',
-                color: 'var(--text-soft)',
-                fontFamily: 'var(--mono)',
-                fontSize: 11,
-              }}
             >
               {UNITS.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
@@ -155,7 +146,7 @@ export function LogsTab({ host }: { host: HostSnapshot }) {
             <div className="audit-row" key={`${event.at}-${index}`}>
               <span className={`a-dot ${event.outcome === 'allow' ? 'a-allow' : 'a-deny'}`} aria-hidden="true" />
               <span className="a-main">
-                <strong>{event.action}</strong>
+                <b>{event.action}</b>
                 <small>{event.actor}{event.detail ? ` · ${event.detail}` : ''}</small>
               </span>
               <time>{new Date(event.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time>

@@ -1,4 +1,4 @@
-import { ChevronRight, Search, Server } from 'lucide-react'
+import { Search, Server } from 'lucide-react'
 import type { HostSnapshot } from '../api'
 
 export function HostsView({
@@ -18,9 +18,10 @@ export function HostsView({
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">INVENTORY / FLEET</p>
           <h1>主机</h1>
-          <p className="page-detail">{hosts.length} 台已登记 · {groups.length} 个分组 · 指纹已固定</p>
+          <p className="page-detail">
+            {hosts.length} 台已登记，{groups.length} 个分组，SSH 指纹全部固定
+          </p>
         </div>
         <div className="heading-actions">
           <label className="command-trigger" style={{ cursor: 'text' }}>
@@ -28,87 +29,92 @@ export function HostsView({
             <input
               aria-label="筛选主机"
               type="search"
-              placeholder="筛选主机…"
+              placeholder="筛选主机"
               autoComplete="off"
               value={query}
               onChange={(event) => onQuery(event.currentTarget.value)}
-              style={{ flex: 1, minInlineSize: 0, border: 0, background: 'transparent', outline: 'none', color: 'inherit', fontSize: 12 }}
+              style={{
+                flex: 1,
+                minInlineSize: 0,
+                border: 0,
+                background: 'transparent',
+                outline: 'none',
+                color: 'inherit',
+                fontSize: 12,
+              }}
             />
           </label>
         </div>
       </div>
 
-      <div className="bento">
-        <section className="tile" style={{ gridColumn: 'span 12' }} aria-labelledby="all-hosts-title">
-          <div className="panel-title-line" style={{ marginBottom: 10 }}>
-            <h2 id="all-hosts-title" style={{ margin: 0, fontSize: 12.5 }}>全部主机</h2>
-            <span className="subtle-count">{hosts.length} HOSTS</span>
+      <section aria-labelledby="all-hosts-title">
+        <div className="section-title">
+          <h2 id="all-hosts-title">全部主机</h2>
+          <span className="count">{hosts.length} 台</span>
+        </div>
+
+        <div className="rack">
+          <div className="rack-head" aria-hidden="true">
+            <span>主机</span>
+            <span>状态</span>
+            <span>平均负载</span>
+            <span>资源</span>
+            <span />
           </div>
-          <div className="table-scroll">
-            <table className="data-table">
-              <caption className="sr-only">主机名称、状态、资源使用与系统信息</caption>
-              <thead>
-                <tr>
-                  <th scope="col" style={{ inlineSize: '26%' }}>主机</th>
-                  <th scope="col" style={{ inlineSize: '12%' }}>状态</th>
-                  <th scope="col" style={{ inlineSize: '14%' }}>CPU</th>
-                  <th scope="col" style={{ inlineSize: '14%' }}>内存</th>
-                  <th scope="col" style={{ inlineSize: '14%' }}>磁盘</th>
-                  <th scope="col">系统</th>
-                  <th scope="col"><span className="sr-only">操作</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {hosts.map((host) => (
-                  <tr key={host.hostId}>
-                    <td>
-                      <button
-                        type="button"
-                        className="host-quick"
-                        style={{ marginInlineStart: 0 }}
-                        onClick={() => onOpenConsole(host.hostId, 'terminal')}
-                      >
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: 0, padding: 0 }}>
-                          <Server size={13} aria-hidden="true" style={{ color: 'var(--text-faint)' }} />
-                          <span className="cell-mono" style={{ fontSize: 11.5 }}>{host.label}</span>
-                          <span className="cell-dim" style={{ fontSize: 10 }}>{host.address}</span>
-                        </span>
-                      </button>
-                    </td>
-                    <td>
-                      <span className={`status-badge status-${host.status}`}>
-                        <span className="status-dot" />
-                        {host.status === 'online' ? '在线' : host.status === 'error' ? '错误' : '离线'}
-                      </span>
-                    </td>
-                    <td><MeterCell value={host.cpuPercent} /></td>
-                    <td><MeterCell value={host.memoryPercent} /></td>
-                    <td><MeterCell value={host.diskPercent} /></td>
-                    <td className="cell-dim" style={{ fontSize: 10.5 }}>{host.os ?? '—'}</td>
-                    <td>
-                      <button className="button button-ghost compact-button" type="button" onClick={() => onOpenConsole(host.hostId, 'terminal')}>
-                        打开 <ChevronRight size={13} aria-hidden="true" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {hosts.length === 0 && <tr><td className="empty-table" colSpan={7}>没有匹配的主机</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+
+          {hosts.map((host) => (
+            <div className="rack-row" key={host.hostId}>
+              <span className="rack-lamp" data-state={host.status} aria-hidden="true" />
+              <span className="rack-name">
+                <b>{host.label}</b>
+                <small>{host.address} · {host.role}</small>
+              </span>
+              <span className="rack-state" data-state={host.status}>
+                {host.status === 'online' ? '在线' : host.status === 'error' ? '连接失败' : '离线'}
+              </span>
+              <span className="rack-load">{host.load ? host.load[0].toFixed(2) : '—'}</span>
+              <div className="gauges">
+                <Gauge label="CPU" value={host.cpuPercent} />
+                <Gauge label="内存" value={host.memoryPercent} />
+                <Gauge label="磁盘" value={host.diskPercent} />
+              </div>
+              <button className="rack-open" type="button" onClick={() => onOpenConsole(host.hostId, 'terminal')}>
+                打开
+              </button>
+            </div>
+          ))}
+
+          {hosts.length === 0 && (
+            <div className="term-empty" style={{ minBlockSize: 200 }}>
+              <Server size={20} aria-hidden="true" />
+              <span>{query ? '没有匹配的主机' : '还没有登记主机'}</span>
+            </div>
+          )}
+        </div>
+
+        <p className="note">
+          <Server size={13} aria-hidden="true" />
+          <span>
+            分组：{groups.join('、') || '未分组'}。所有连接经服务端发起，SSH 主机密钥与登记指纹逐一比对。
+          </span>
+        </p>
+      </section>
     </>
   )
 }
 
-function MeterCell({ value }: { value?: number }) {
-  if (value === undefined) return <span className="cell-dim">—</span>
-  const tone = value > 85 ? 'tone-danger' : value > 70 ? 'tone-warn' : undefined
+function Gauge({ label, value }: { label: string; value?: number }) {
+  const safe = value ?? 0
+  const tone = safe > 88 ? 'fail' : safe > 72 ? 'warn' : undefined
   return (
-    <div className="table-meter">
-      <span className={`track ${tone ?? ''}`}><span style={{ inlineSize: `${value}%` }} /></span>
-      <span>{value}%</span>
-    </div>
+    <span className="gauge">
+      <span className="gauge-top">
+        {label}
+        <b>{value === undefined ? '—' : `${safe}%`}</b>
+      </span>
+      <span className="gauge-rail" data-tone={tone} role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={safe}>
+        <i style={{ inlineSize: `${safe}%` }} />
+      </span>
+    </span>
   )
 }
