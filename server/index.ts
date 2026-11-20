@@ -5,7 +5,7 @@ import { WebSocketServer, type WebSocket } from 'ws'
 import { createAuditSink, type AuditSink } from './audit.ts'
 import { createSessionStore, hashPassword, verifyApiToken, verifyPassword, type SessionStore } from './auth.ts'
 import { loadConfig, type BerthConfig, type BerthHostConfig } from './config.ts'
-import { createCollector, createContainerCollector, createLogCollector } from './collectors.ts'
+import { createCollector, createContainerCollector, createLogCollector, type ContainerAction } from './collectors.ts'
 import { createFileService, isProtectedPath, normalizeRemotePath } from './files.ts'
 import { createHost, findHostConfig, updateHost } from './host-admin.ts'
 import { openSshConnection, probeHostFingerprint } from './ssh.ts'
@@ -308,6 +308,48 @@ const server = createServer(async (request, response) => {
       detail: result.ok ? undefined : result.reason,
     })
     sendJson(response, result.ok ? 200 : 502, result.ok ? { containers: result.containers } : { error: result.reason })
+    return
+  }
+
+  const containerActionMatch = pathname.match(/^\/api\/hosts\/([^/]+)\/containers\/([^/]+)\/(start|stop|restart)$/)
+  if (containerActionMatch && request.method === 'POST') {
+    const host = findHost(decodeURIComponent(containerActionMatch[1]))
+    if (!host) {
+      sendJson(response, 404, { error: 'unknown host' })
+      return
+    }
+    const containerId = decodeURIComponent(containerActionMatch[2])
+    const action = containerActionMatch[3] as ContainerAction
+    const result = await containerCollector.control(host, containerId, action)
+    audit.record({
+      actor: subjectId,
+      action: `containers.${action}`,
+      hostId: host.id,
+      outcome: result.ok ? 'allow' : 'deny',
+      detail: result.ok ? containerId : `${containerId}: ${result.reason}`,
+    })
+    sendJson(response, result.ok ? 200 : 400, result.ok ? { ok: true } : { error: result.reason })
+    return
+  }
+
+  const containerLogMatch = pathname.match(/^\/api\/hosts\/([^/]+)\/containers\/([^/]+)\/logs$/)
+  if (containerLogMatch && request.method === 'GET') {
+    const host = findHost(decodeURIComponent(containerLogMatch[1]))
+    if (!host) {
+      sendJson(response, 404, { error: 'unknown host' })
+      return
+    }
+    const containerId = decodeURIComponent(containerLogMatch[2])
+    const lines = Number(url.searchParams.get('lines') ?? '200')
+    const result = await containerCollector.logs(host, containerId, Number.isFinite(lines) ? lines : 200)
+    audit.record({
+      actor: subjectId,
+      action: 'containers.logs',
+      hostId: host.id,
+      outcome: result.ok ? 'allow' : 'deny',
+      detail: result.ok ? containerId : `${containerId}: ${result.reason}`,
+    })
+    sendJson(response, result.ok ? 200 : 502, result.ok ? { lines: result.lines } : { error: result.reason })
     return
   }
 

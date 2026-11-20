@@ -3,6 +3,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LogOut,
+  Menu,
   Moon,
   Plus,
   RefreshCw,
@@ -49,14 +50,19 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [hostForm, setHostForm] = useState<HostFormTarget | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const notify = useCallback((message: string) => { toast(message) }, [])
 
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await api.getHosts()
-      setHosts(result.hosts)
+      const [hostsResult, auditResult] = await Promise.all([
+        api.getHosts(),
+        api.getAudit(30).catch(() => null),
+      ])
+      setHosts(hostsResult.hosts)
+      if (auditResult) setAudit(auditResult.events)
       setError('')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '采集失败')
@@ -74,7 +80,6 @@ export default function App() {
   useEffect(() => {
     if (authed !== true) return
     void refresh()
-    api.getAudit(30).then((result) => setAudit(result.events)).catch(() => {})
     const timer = window.setInterval(() => { void refresh() }, POLL_MS)
     return () => window.clearInterval(timer)
   }, [authed, refresh])
@@ -103,6 +108,7 @@ export default function App() {
     setConsoleHostId(hostId)
     if (tab) setConsoleTab(tab)
     setView('console')
+    setSidebarOpen(false)
   }, [])
 
   const navigate = useCallback((target: PaletteTarget) => {
@@ -133,15 +139,27 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={250}>
-      <div className="flex h-full">
+      <div className="relative flex h-full">
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/40 md:hidden"
+            aria-hidden="true"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         {/* ============ 侧栏 ============ */}
-        <aside className="flex w-[264px] shrink-0 flex-col border-r border-border bg-sidebar" aria-label="导航">
+        <aside
+          className={cn(
+            'fixed inset-y-0 left-0 z-40 flex w-[264px] shrink-0 flex-col border-r border-border bg-sidebar transition-transform duration-200 md:static md:translate-x-0',
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          )}
+          aria-label="导航"
+        >
           <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-            <button type="button" className="flex items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/60" onClick={() => setView('overview')}>
+            <button type="button" className="flex items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/60" onClick={() => { setView('overview'); setSidebarOpen(false) }}>
               <BerthMark size={28} />
               <span className="text-[17px] font-semibold tracking-tight">Berth</span>
             </button>
-            <span className="text-xs text-muted-foreground">私有服务器</span>
           </div>
 
           <div className="px-3 pb-3">
@@ -158,8 +176,8 @@ export default function App() {
           </div>
 
           <nav className="grid gap-0.5 px-3 pb-3">
-            <NavItem active={view === 'overview'} icon={LayoutDashboard} onClick={() => setView('overview')}>概览</NavItem>
-            <NavItem active={view === 'access'} icon={KeyRound} onClick={() => setView('access')}>凭据与权限</NavItem>
+            <NavItem active={view === 'overview'} icon={LayoutDashboard} onClick={() => { setView('overview'); setSidebarOpen(false) }}>概览</NavItem>
+            <NavItem active={view === 'access'} icon={KeyRound} onClick={() => { setView('access'); setSidebarOpen(false) }}>凭据与设置</NavItem>
           </nav>
 
           <div className="flex items-center justify-between px-5 pt-1 pb-1.5 text-xs font-medium text-muted-foreground">
@@ -225,7 +243,16 @@ export default function App() {
 
         {/* ============ 主区 ============ */}
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-6">
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 md:px-6">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              aria-label="打开导航"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu />
+            </Button>
             <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
               <button type="button" className="hover:text-foreground" onClick={() => setView('overview')}>Berth</button>
               <span aria-hidden="true">/</span>
@@ -270,7 +297,14 @@ export default function App() {
             {view === 'console' && !activeHost && (
               <div className="grid h-full place-items-center text-muted-foreground"><span className="flex items-center gap-2"><Plus className="size-4" />从左侧选择一台服务器</span></div>
             )}
-            {view === 'access' && <AccessView hosts={hosts} onAction={notify} onLogout={() => void logout()} />}
+            {view === 'access' && (
+              <AccessView
+                hosts={hosts}
+                onAddHost={() => setHostForm({ mode: 'create' })}
+                onEditHost={(hostId) => setHostForm({ mode: 'edit', hostId })}
+                onLogout={() => void logout()}
+              />
+            )}
           </div>
           <span className="sr-only" aria-live="polite">{`${onlineCount} 台在线，${issues} 台待查`}</span>
         </main>

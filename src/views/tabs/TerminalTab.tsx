@@ -21,7 +21,7 @@ type Session = {
 
 let seq = 0
 
-export function TerminalTab({ host, notify }: { host: HostSnapshot; notify: (message: string) => void }) {
+export function TerminalTab({ host, notify, visible = true }: { host: HostSnapshot; notify: (message: string) => void; visible?: boolean }) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const mountRef = useRef<HTMLDivElement>(null)
@@ -29,6 +29,19 @@ export function TerminalTab({ host, notify }: { host: HostSnapshot; notify: (mes
 
   sessionsRef.current = sessions
   const active = sessions.find((session) => session.id === activeId) ?? null
+
+  // 切回终端标签时重新适配容器尺寸并聚焦
+  useEffect(() => {
+    if (!visible || !active) return
+    const id = requestAnimationFrame(() => {
+      active.fit.fit()
+      if (active.status === 'ready') {
+        active.ws.send(JSON.stringify({ type: 'resize', data: `${active.term.cols}:${active.term.rows}` }))
+      }
+      active.term.focus()
+    })
+    return () => cancelAnimationFrame(id)
+  }, [visible, active])
 
   // Mount xterm into the DOM node only for the active session.
   useEffect(() => {

@@ -128,6 +128,10 @@ export const api = {
   probeHostKey: (address: string, port: number) =>
     request<{ fingerprint: string }>('/api/hosts/probe', { method: 'POST', body: JSON.stringify({ address, port }) }),
   getContainers: (hostId: string) => request<{ containers: ContainerInfo[] }>(`/api/hosts/${encodeURIComponent(hostId)}/containers`),
+  controlContainer: (hostId: string, containerId: string, action: 'start' | 'stop' | 'restart') =>
+    request<{ ok: true }>(`/api/hosts/${encodeURIComponent(hostId)}/containers/${encodeURIComponent(containerId)}/${action}`, { method: 'POST' }),
+  getContainerLogs: (hostId: string, containerId: string, lines = 200) =>
+    request<{ lines: string[] }>(`/api/hosts/${encodeURIComponent(hostId)}/containers/${encodeURIComponent(containerId)}/logs?lines=${lines}`),
   getLogs: (hostId: string, unit: string, lines: number) =>
     request<{ lines: string[] }>(`/api/hosts/${encodeURIComponent(hostId)}/logs?unit=${encodeURIComponent(unit)}&lines=${lines}`),
   getFiles: (hostId: string, path: string) =>

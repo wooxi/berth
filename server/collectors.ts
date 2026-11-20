@@ -151,10 +151,15 @@ export type ContainerInfo = {
   created: string
 }
 
+export type ContainerAction = 'start' | 'stop' | 'restart'
+
 export type ContainerCollector = {
   list: (host: BerthHostConfig) => Promise<{ ok: true; containers: ContainerInfo[] } | { ok: false; reason: string }>
+  control: (host: BerthHostConfig, containerId: string, action: ContainerAction) => Promise<{ ok: true } | { ok: false; reason: string }>
+  logs: (host: BerthHostConfig, containerId: string, lines: number) => Promise<{ ok: true; lines: string[] } | { ok: false; reason: string }>
 }
 
+const CONTAINER_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const CONTAINER_SCRIPT = (runtime: 'docker' | 'podman' | 'none') => `LC_ALL=C ${runtime === 'podman' ? 'podman' : 'docker'} ps -a --format '{{json .}}' 2>/dev/null || true`
 
 export function createContainerCollector(privateKeyPath: string): ContainerCollector {
@@ -186,6 +191,36 @@ export function createContainerCollector(privateKeyPath: string): ContainerColle
           }
         }
         return { ok: true, containers }
+      } finally {
+        result.connection.client.end()
+      }
+    },
+    async control(host, containerId, action) {
+      if (host.runtime === 'none') return { ok: false, reason: '容器运行时未启用' }
+      if (!CONTAINER_ID_RE.test(containerId)) return { ok: false, reason: '非法容器标识' }
+      const result = await openSshConnection(host, { privateKeyPath })
+      if (!result.ok) return { ok: false, reason: result.reason }
+      try {
+        const bin = host.runtime === 'podman' ? 'podman' : 'docker'
+        const output = await runCommand(result.connection, `LC_ALL=C ${bin} ${action} '${containerId}' 2>&1`, 30000)
+        if (!output.ok) return { ok: false, reason: output.reason }
+        if (output.code !== 0) return { ok: false, reason: output.stdout.trim() || `${action} 失败 (${output.code})` }
+        return { ok: true }
+      } finally {
+        result.connection.client.end()
+      }
+    },
+    async logs(host, containerId, lines) {
+      if (host.runtime === 'none') return { ok: true, lines: [] }
+      if (!CONTAINER_ID_RE.test(containerId)) return { ok: false, reason: '非法容器标识' }
+      const safeLines = Math.min(Math.max(lines, 1), 500)
+      const result = await openSshConnection(host, { privateKeyPath })
+      if (!result.ok) return { ok: false, reason: result.reason }
+      try {
+        const bin = host.runtime === 'podman' ? 'podman' : 'docker'
+        const output = await runCommand(result.connection, `LC_ALL=C ${bin} logs --tail ${safeLines} '${containerId}' 2>&1 || true`, 15000)
+        if (!output.ok) return { ok: false, reason: output.reason }
+        return { ok: true, lines: output.stdout.split('\n').filter((line) => line.length > 0) }
       } finally {
         result.connection.client.end()
       }

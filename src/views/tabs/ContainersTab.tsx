@@ -7,13 +7,17 @@ import {
   Power,
   RefreshCw,
   RotateCw,
+  ScrollText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, type ContainerInfo, type HostSnapshot } from '../../api'
-import { EmptyState, StatusBadge, Toolbar, ToolbarSep } from '@/components/common'
+import { EmptyState, Spinner, StatusBadge, Toolbar, ToolbarSep } from '@/components/common'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+
+type Action = 'start' | 'stop' | 'restart'
+const ACTION_LABEL: Record<Action, string> = { start: '启动', stop: '停止', restart: '重启' }
 
 export function ContainersTab({
   host,
@@ -24,8 +28,11 @@ export function ContainersTab({
   const [containers, setContainers] = useState<ContainerInfo[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [busyKey, setBusyKey] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'running' | 'stopped'>('all')
   const [activeContainer, setActiveContainer] = useState<ContainerInfo | null>(null)
+  const [logs, setLogs] = useState<string[]>([])
+  const [logsLoading, setLogsLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -40,10 +47,30 @@ export function ContainersTab({
     }
   }, [host.hostId])
 
+  const loadLogs = useCallback(async (container: ContainerInfo) => {
+    setLogsLoading(true)
+    try {
+      const result = await api.getContainerLogs(host.hostId, container.id || container.name, 150)
+      setLogs(result.lines)
+    } catch (cause) {
+      setLogs([cause instanceof Error ? cause.message : '日志读取失败'])
+    } finally {
+      setLogsLoading(false)
+    }
+  }, [host.hostId])
+
   useEffect(() => {
     if (host.runtime === 'none') return
     void load()
   }, [load, host.runtime])
+
+  useEffect(() => {
+    if (!activeContainer) {
+      setLogs([])
+      return
+    }
+    void loadLogs(activeContainer)
+  }, [activeContainer, loadLogs])
 
   if (host.runtime === 'none') {
     return (
@@ -61,10 +88,19 @@ export function ContainersTab({
     )
   }
 
-  const handleContainerAction = (container: ContainerInfo, action: 'start' | 'stop' | 'restart') => {
-    const runtime = host.runtime === 'podman' ? 'podman' : 'docker'
-    const cmd = `${runtime} ${action} ${container.name || container.id}`
-    copyCommand(cmd)
+  const handleContainerAction = async (container: ContainerInfo, action: Action) => {
+    const target = container.id || container.name
+    const key = `${target}:${action}`
+    setBusyKey(key)
+    try {
+      await api.controlContainer(host.hostId, target, action)
+      toast.success(`${container.name} 已${ACTION_LABEL[action]}`)
+      await load()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : `${ACTION_LABEL[action]}失败`)
+    } finally {
+      setBusyKey(null)
+    }
   }
 
   const running = containers.filter((item) => item.state === 'running').length
@@ -102,12 +138,14 @@ export function ContainersTab({
               <TableHead>状态</TableHead>
               <TableHead>运行信息</TableHead>
               <TableHead>端口映射</TableHead>
-              <TableHead className="w-52 text-right px-5">操作</TableHead>
+              <TableHead className="w-56 px-5 text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {visible.map((container) => {
               const isRunning = container.state === 'running'
+              const target = container.id || container.name
+              const isBusy = busyKey?.startsWith(`${target}:`) ?? false
               return (
                 <TableRow key={container.id}>
                   <TableCell className="px-5">
@@ -133,24 +171,26 @@ export function ContainersTab({
                   <TableCell className="max-w-72 truncate font-mono text-xs text-muted-foreground">
                     {container.ports || '—'}
                   </TableCell>
-                  <TableCell className="text-right px-5">
+                  <TableCell className="px-5 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       {isRunning ? (
                         <>
                           <Button
                             variant="secondary"
                             size="xs"
-                            onClick={() => handleContainerAction(container, 'restart')}
+                            disabled={isBusy}
+                            onClick={() => void handleContainerAction(container, 'restart')}
                           >
-                            <RotateCw className="size-3" />
+                            {busyKey === `${target}:restart` ? <Spinner className="size-3" /> : <RotateCw className="size-3" />}
                             重启
                           </Button>
                           <Button
                             variant="destructive"
                             size="xs"
-                            onClick={() => handleContainerAction(container, 'stop')}
+                            disabled={isBusy}
+                            onClick={() => void handleContainerAction(container, 'stop')}
                           >
-                            <Power className="size-3" />
+                            {busyKey === `${target}:stop` ? <Spinner className="size-3" /> : <Power className="size-3" />}
                             停止
                           </Button>
                         </>
@@ -158,9 +198,10 @@ export function ContainersTab({
                         <Button
                           variant="default"
                           size="xs"
-                          onClick={() => handleContainerAction(container, 'start')}
+                          disabled={isBusy}
+                          onClick={() => void handleContainerAction(container, 'start')}
                         >
-                          <Play className="size-3" />
+                          {busyKey === `${target}:start` ? <Spinner className="size-3" /> : <Play className="size-3" />}
                           启动
                         </Button>
                       )}
@@ -168,6 +209,7 @@ export function ContainersTab({
                         variant="ghost"
                         size="icon"
                         className="size-7"
+                        aria-label={`${container.name} 详情与日志`}
                         onClick={() => setActiveContainer(container)}
                       >
                         <Info className="size-3.5 text-muted-foreground" />
@@ -191,10 +233,10 @@ export function ContainersTab({
         <span>主机: {host.hostId}</span>
       </div>
 
-      {/* 容器详情弹窗 */}
+      {/* 容器详情与实时日志弹窗 */}
       <Dialog open={Boolean(activeContainer)} onOpenChange={(open) => !open && setActiveContainer(null)}>
         {activeContainer && (
-          <DialogContent className="max-w-md p-6">
+          <DialogContent className="max-w-2xl p-6">
             <DialogTitle className="flex items-center gap-2.5 text-base font-semibold">
               <Box className="size-5 text-primary" />
               {activeContainer.name}
@@ -204,48 +246,60 @@ export function ContainersTab({
             </DialogDescription>
 
             <div className="mt-4 grid gap-3 text-xs">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-md bg-muted/60 p-2.5">
                   <span className="text-muted-foreground">状态</span>
                   <div className="mt-1 font-medium">{activeContainer.status}</div>
                 </div>
                 <div className="rounded-md bg-muted/60 p-2.5">
                   <span className="text-muted-foreground">容器 ID</span>
-                  <div className="mt-1 font-mono truncate font-medium">{activeContainer.id}</div>
+                  <div className="mt-1 truncate font-mono font-medium">{activeContainer.id}</div>
+                </div>
+                <div className="rounded-md bg-muted/60 p-2.5">
+                  <span className="text-muted-foreground">端口</span>
+                  <div className="mt-1 truncate font-mono font-medium">{activeContainer.ports || '—'}</div>
                 </div>
               </div>
 
-              <div className="rounded-md bg-muted/60 p-2.5">
-                <span className="text-muted-foreground">端口</span>
-                <div className="mt-1 font-mono">{activeContainer.ports || '—'}</div>
+              <div className="flex items-center justify-between gap-2 rounded border border-border bg-card p-2">
+                <code className="truncate font-mono text-[11px] text-foreground">
+                  {`${host.runtime === 'podman' ? 'podman' : 'docker'} exec -it ${activeContainer.name} sh`}
+                </code>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 shrink-0"
+                  aria-label="复制进入容器命令"
+                  onClick={() => copyCommand(`${host.runtime === 'podman' ? 'podman' : 'docker'} exec -it ${activeContainer.name} sh`)}
+                >
+                  <Copy className="size-3" />
+                </Button>
               </div>
 
-              <div className="mt-2 space-y-1.5">
-                {[
-                  {
-                    label: 'Shell (Exec)',
-                    cmd: `${host.runtime === 'podman' ? 'podman' : 'docker'} exec -it ${activeContainer.name} sh`,
-                  },
-                  {
-                    label: '日志 (Logs)',
-                    cmd: `${host.runtime === 'podman' ? 'podman' : 'docker'} logs -f --tail=100 ${activeContainer.name}`,
-                  },
-                ].map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between gap-2 rounded border border-border bg-card p-2 text-xs"
+              <div className="overflow-hidden rounded-lg border border-border bg-term">
+                <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5 text-zinc-400">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <ScrollText className="size-3.5" />最近 150 行日志
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="h-6 text-zinc-300 hover:bg-white/10"
+                    disabled={logsLoading}
+                    onClick={() => void loadLogs(activeContainer)}
                   >
-                    <code className="font-mono text-[11px] text-foreground truncate">{item.cmd}</code>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-6 shrink-0"
-                      onClick={() => copyCommand(item.cmd)}
-                    >
-                      <Copy className="size-3" />
-                    </Button>
-                  </div>
-                ))}
+                    <RefreshCw className={`size-3 ${logsLoading ? 'spin' : ''}`} />刷新
+                  </Button>
+                </div>
+                <div className="max-h-72 overflow-y-auto p-3 font-mono text-[11.5px] leading-relaxed text-zinc-200">
+                  {logs.length === 0 ? (
+                    <span className="text-zinc-500">{logsLoading ? '读取中…' : '暂无输出'}</span>
+                  ) : (
+                    logs.map((line, idx) => (
+                      <div key={idx} className="break-all whitespace-pre-wrap">{line}</div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </DialogContent>

@@ -1,4 +1,4 @@
-import { Copy, KeyRound, LogOut, Plus, Server, User } from 'lucide-react'
+import { Copy, KeyRound, LogOut, Pencil, Plus, Server, User } from 'lucide-react'
 import { toast } from 'sonner'
 import type { HostSnapshot } from '@/api'
 import { EmptyState } from '@/components/common'
@@ -8,11 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export function AccessView({
   hosts,
-  onAction,
+  onAddHost,
+  onEditHost,
   onLogout,
 }: {
   hosts: HostSnapshot[]
-  onAction: (message: string) => void
+  onAddHost: () => void
+  onEditHost: (hostId: string) => void
   onLogout: () => void
 }) {
   const copyFingerprint = (text: string) => {
@@ -83,8 +85,8 @@ export function AccessView({
               variant="secondary"
               size="icon"
               className="ml-auto size-7"
-              aria-label="添加凭据"
-              onClick={() => onAction('请在服务端的 hosts.json 中登记新主机')}
+              aria-label="登记新主机"
+              onClick={onAddHost}
             >
               <Plus className="size-3.5" />
             </Button>
@@ -105,6 +107,15 @@ export function AccessView({
                       <small className="block font-mono text-xs text-muted-foreground">{host.address}</small>
                     </div>
                     <Badge tone="ok" dot>正常</Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-muted-foreground hover:text-foreground"
+                      aria-label={`编辑 ${host.label}`}
+                      onClick={() => onEditHost(host.hostId)}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
                   </div>
                   <div className="flex items-center justify-between gap-2 rounded bg-muted/50 px-2 py-1.5 font-mono text-xs text-muted-foreground">
                     <span className="truncate" title={host.fingerprint}>

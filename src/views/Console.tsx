@@ -70,7 +70,9 @@ export function ConsoleView({
       </Tabs>
 
       <div className="flex min-h-0 flex-1 flex-col" role="tabpanel" aria-label={TABS.find((item) => item.id === tab)?.label}>
-        {tab === 'terminal' && <TerminalTab host={host} notify={notify} />}
+        <div className={tab === 'terminal' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+          <TerminalTab host={host} notify={notify} visible={tab === 'terminal'} />
+        </div>
         {tab === 'files' && <FilesTab host={host} notify={notify} />}
         {tab === 'containers' && <ContainersTab host={host} notify={notify} />}
         {tab === 'logs' && <LogsTab host={host} />}
