@@ -17,18 +17,105 @@ type Session = {
   fit: FitAddon
   status: 'connecting' | 'ready' | 'closed'
   openedAt: number
+  disposeQueue: () => void
 }
 
 let seq = 0
 
+/** 兼容局域网 HTTP 环境的剪贴板写入 */
+async function writeClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      /* 降级到 execCommand */
+    }
+  }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'
+  document.body.appendChild(ta)
+  ta.select()
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } finally {
+    document.body.removeChild(ta)
+  }
+  return ok
+}
+
+/** 创建带分块流控的输入队列，避免一次性写入大量换行文本塞爆远端 PTY 缓冲区 */
+function createInputSender(ws: WebSocket) {
+  const queue: string[] = []
+  let timer: number | null = null
+  const CHUNK = 512
+
+  const flush = () => {
+    timer = null
+    if (ws.readyState !== WebSocket.OPEN) {
+      queue.length = 0
+      return
+    }
+    const next = queue.shift()
+    if (next !== undefined) {
+      ws.send(JSON.stringify({ type: 'input', data: next }))
+    }
+    if (queue.length > 0) {
+      timer = window.setTimeout(flush, 12)
+    }
+  }
+
+  const send = (data: string) => {
+    if (ws.readyState !== WebSocket.OPEN) return
+    if (data.length <= 256 && queue.length === 0 && timer === null) {
+      ws.send(JSON.stringify({ type: 'input', data }))
+      return
+    }
+    let i = 0
+    while (i < data.length) {
+      let end = Math.min(i + CHUNK, data.length)
+      // 避免把 UTF-16 代理对从中间劈开
+      if (end < data.length) {
+        const code = data.charCodeAt(end - 1)
+        if (code >= 0xd800 && code <= 0xdbff) end -= 1
+      }
+      queue.push(data.slice(i, end))
+      i = end
+    }
+    if (timer === null) flush()
+  }
+
+  const dispose = () => {
+    if (timer !== null) {
+      window.clearTimeout(timer)
+      timer = null
+    }
+    queue.length = 0
+  }
+
+  return { send, dispose }
+}
+
 export function TerminalTab({ host, notify, visible = true }: { host: HostSnapshot; notify: (message: string) => void; visible?: boolean }) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [copiedHint, setCopiedHint] = useState(false)
+  const [pasteCaptureOpen, setPasteCaptureOpen] = useState(false)
   const mountRef = useRef<HTMLDivElement>(null)
+  const pasteBoxRef = useRef<HTMLTextAreaElement>(null)
   const sessionsRef = useRef<Session[]>([])
+  const copyTimerRef = useRef<number | null>(null)
 
   sessionsRef.current = sessions
   const active = sessions.find((session) => session.id === activeId) ?? null
+
+  const flashCopied = () => {
+    setCopiedHint(true)
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = window.setTimeout(() => setCopiedHint(false), 1400)
+  }
 
   // 切回终端标签时重新适配容器尺寸并聚焦
   useEffect(() => {
@@ -43,7 +130,7 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
     return () => cancelAnimationFrame(id)
   }, [visible, active])
 
-  // Mount xterm into the DOM node only for the active session.
+  // 挂载当前会话到 DOM，并绑定选定即复制与右键即粘贴
   useEffect(() => {
     if (!active) return
     const node = mountRef.current
@@ -56,19 +143,63 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
     }
     active.term.focus()
 
+    const onMouseUp = () => {
+      requestAnimationFrame(() => {
+        if (!active.term.hasSelection()) return
+        const text = active.term.getSelection()
+        if (!text) return
+        void writeClipboard(text).then((ok) => {
+          if (ok) flashCopied()
+          active.term.focus()
+        })
+      })
+    }
+
+    const onContextMenu = (event: MouseEvent) => {
+      event.preventDefault()
+      if (active.status !== 'ready') return
+      if (navigator.clipboard?.readText) {
+        navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text) {
+              active.term.paste(text)
+              active.term.clearSelection()
+            }
+            active.term.focus()
+          })
+          .catch(() => {
+            setPasteCaptureOpen(true)
+            requestAnimationFrame(() => pasteBoxRef.current?.focus())
+          })
+      } else {
+        setPasteCaptureOpen(true)
+        requestAnimationFrame(() => pasteBoxRef.current?.focus())
+      }
+    }
+
+    node.addEventListener('mouseup', onMouseUp)
+    node.addEventListener('contextmenu', onContextMenu)
+
     const observer = new ResizeObserver(() => {
       if (active.status !== 'ready') return
       active.fit.fit()
       active.ws.send(JSON.stringify({ type: 'resize', data: `${active.term.cols}:${active.term.rows}` }))
     })
     observer.observe(node)
-    return () => observer.disconnect()
+    return () => {
+      node.removeEventListener('mouseup', onMouseUp)
+      node.removeEventListener('contextmenu', onContextMenu)
+      observer.disconnect()
+    }
   }, [active])
 
-  // Reconnect cleanly when the selected host changes.
+  // 切换主机或卸载时清理所有会话
   useEffect(() => {
     return () => {
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current)
       for (const session of sessionsRef.current) {
+        session.disposeQueue()
         session.ws.close()
         session.term.dispose()
       }
@@ -102,7 +233,30 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
     const fit = new FitAddon()
     term.loadAddon(fit)
 
+    // 接管 Ctrl+C（有选区时复制而非中断）/ Ctrl+V（交给浏览器原生 paste）
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== 'keydown') return true
+      const mod = event.ctrlKey || event.metaKey
+      if (!mod) return true
+      const key = event.key.toLowerCase()
+      if (key === 'c' && (term.hasSelection() || event.shiftKey)) {
+        const text = term.getSelection()
+        if (text) {
+          void writeClipboard(text).then((ok) => {
+            if (ok) flashCopied()
+          })
+          term.clearSelection()
+        }
+        return false
+      }
+      if (key === 'v') {
+        return false
+      }
+      return true
+    })
+
     const ws = terminalWebSocket(host.hostId)
+    const sender = createInputSender(ws)
     const session: Session = {
       id: `s${++seq}`,
       hostId: host.hostId,
@@ -112,6 +266,7 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
       fit,
       status: 'connecting',
       openedAt: Date.now(),
+      disposeQueue: sender.dispose,
     }
 
     ws.onmessage = (event) => {
@@ -132,13 +287,14 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
       }
     }
     ws.onclose = () => {
+      sender.dispose()
       session.status = 'closed'
       setSessions((current) => [...current])
       term.write('\r\n\x1b[38;2;245;185;66msession closed\x1b[0m\r\n')
     }
     ws.onerror = () => term.write('\r\n\x1b[38;2;244;119;107mwebsocket error\x1b[0m\r\n')
     term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'input', data }))
+      sender.send(data)
     })
 
     setSessions((current) => [...current, session])
@@ -147,6 +303,7 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
 
   function disconnect() {
     if (!active) return
+    active.disposeQueue()
     active.ws.close()
     active.term.write('\r\n\x1b[38;2;245;185;66mdisconnected\x1b[0m\r\n')
     notify('已断开终端会话')
@@ -159,6 +316,7 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
   function close(id: string) {
     const target = sessions.find((session) => session.id === id)
     if (target) {
+      target.disposeQueue()
       target.ws.close()
       target.term.dispose()
     }
@@ -167,7 +325,6 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
   }
 
   const readyCount = sessions.filter((session) => session.status === 'ready').length
-
 
   return (
     <>
@@ -190,10 +347,38 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
         )}
       </Toolbar>
 
-      <div className="flex min-h-0 flex-1 flex-col bg-term">
+      <div className="relative flex min-h-0 flex-1 flex-col bg-term">
         {active ? (
           <>
             <div className="min-h-0 flex-1 overflow-hidden" ref={mountRef} />
+            {pasteCaptureOpen && (
+              <div className="absolute right-4 bottom-10 z-20 flex items-center gap-2 rounded-lg border border-white/15 bg-zinc-900/95 px-3 py-2 text-xs text-zinc-200 shadow-xl">
+                <span>请按 <kbd className="rounded border border-white/20 px-1 font-mono">Ctrl+V</kbd> 粘贴</span>
+                <textarea
+                  ref={pasteBoxRef}
+                  rows={1}
+                  aria-label="粘贴捕获区"
+                  className="h-5 w-20 resize-none rounded border border-white/20 bg-black/40 px-1.5 font-mono text-xs text-zinc-100 outline-none"
+                  onPaste={(event) => {
+                    event.preventDefault()
+                    const text = event.clipboardData.getData('text')
+                    if (text) {
+                      active.term.paste(text)
+                      active.term.clearSelection()
+                    }
+                    setPasteCaptureOpen(false)
+                    active.term.focus()
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      setPasteCaptureOpen(false)
+                      active.term.focus()
+                    }
+                  }}
+                  onBlur={() => setPasteCaptureOpen(false)}
+                />
+              </div>
+            )}
             <div className="flex shrink-0 items-center gap-4 border-t border-white/10 bg-black/20 px-4 py-1.5 font-mono text-xs text-zinc-400">
               <span className="flex items-center gap-2">
                 <span aria-hidden="true" className={cn('size-1.5 rounded-full', active.status === 'ready' ? 'bg-[#8fd5bf]' : active.status === 'connecting' ? 'bg-amber-400' : 'bg-red-400')} />
@@ -201,6 +386,7 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
               </span>
               <span>{host.hostId}</span>
               <span>{active.term.cols}×{active.term.rows}</span>
+              {copiedHint && <span className="text-[#8fd5bf]">已复制</span>}
               <Button variant="ghost" size="xs" className="ml-auto text-zinc-400 hover:bg-white/10 hover:text-zinc-100" onClick={() => close(active.id)}>关闭会话</Button>
             </div>
           </>

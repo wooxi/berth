@@ -584,7 +584,7 @@ const server = createServer(async (request, response) => {
   sendJson(response, 405, { error: 'method not allowed' })
 })
 
-const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 })
+const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 })
 
 server.on('upgrade', (request, socket, head) => {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`)
@@ -634,6 +634,44 @@ async function handleTerminal(ws: WebSocket, host: BerthHostConfig, subjectId: s
     }
 
     ws.send(JSON.stringify({ type: 'ready', host: host.id, label: host.label }))
+
+    // 大段粘贴输入按小块队列写入并尊重 stream 背压，避免塞爆远端 PTY 缓冲区导致截断
+    const writeQueue: Buffer[] = []
+    let writing = false
+    const pumpWrite = () => {
+      if (writing) return
+      writing = true
+      while (writeQueue.length > 0) {
+        const chunk = writeQueue.shift()!
+        if (!stream.write(chunk)) {
+          stream.once('drain', () => {
+            writing = false
+            pumpWrite()
+          })
+          return
+        }
+      }
+      writing = false
+    }
+    const enqueueStreamWrite = (text: string) => {
+      const buf = Buffer.from(text, 'utf8')
+      const CHUNK = 512
+      if (buf.length <= CHUNK && writeQueue.length === 0 && !writing) {
+        if (!stream.write(buf)) {
+          writing = true
+          stream.once('drain', () => {
+            writing = false
+            pumpWrite()
+          })
+        }
+        return
+      }
+      for (let offset = 0; offset < buf.length; offset += CHUNK) {
+        writeQueue.push(buf.subarray(offset, offset + CHUNK))
+      }
+      pumpWrite()
+    }
+
     stream.on('data', (chunk: Buffer) => {
       ws.send(JSON.stringify({ type: 'output', data: chunk.toString('utf8') }))
     })
@@ -649,7 +687,7 @@ async function handleTerminal(ws: WebSocket, host: BerthHostConfig, subjectId: s
         return
       }
       if (parsed.type === 'input' && typeof parsed.data === 'string') {
-        stream.write(parsed.data)
+        enqueueStreamWrite(parsed.data)
       }
       if (parsed.type === 'resize' && typeof parsed.data === 'string') {
         const [cols, rows] = parsed.data.split(':').map(Number)
