@@ -24,4 +24,8 @@ function DialogContent({ className, children, ...props }: React.ComponentProps<t
 const DialogTitle = DialogPrimitive.Title
 const DialogDescription = DialogPrimitive.Description
 
-export { Dialog, DialogContent, DialogTitle, DialogDescription }
+function DialogClose({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Close>) {
+  return <DialogPrimitive.Close data-slot="dialog-close" className={cn('rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/60', className)} {...props} />
+}
+
+export { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose }
