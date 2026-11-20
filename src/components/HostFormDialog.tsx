@@ -15,11 +15,11 @@ const EMPTY_DRAFT: HostDraft = {
   id: '',
   label: '',
   address: '',
-  port: 22,
+  port: 0,
   username: '',
   fingerprint: '',
-  group: 'default',
-  role: 'server',
+  group: '',
+  role: '',
   runtime: 'docker',
   systemd: true,
   enabled: true,
@@ -75,7 +75,7 @@ export function HostFormDialog({
     }
   }, [target])
 
-  const validation = validateHostAdminDraft(draft)
+  const validation = validateHostAdminDraft(effectiveDraft())
   const issueMap: IssueMap = validation.ok ? {} : Object.fromEntries(validation.issues.map((issue) => [issue.field, issue.message]))
 
   function issueOf(field: keyof HostAdminDraft): string | undefined {
@@ -84,6 +84,16 @@ export function HostFormDialog({
 
   function update<K extends keyof HostDraft>(field: K, value: HostDraft[K]) {
     setDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  function effectiveDraft(): HostDraft {
+    if (target?.mode === 'edit') return draft
+    return {
+      ...draft,
+      port: draft.port || 22,
+      group: draft.group.trim() || 'default',
+      role: draft.role.trim() || 'server',
+    }
   }
 
   function invalid(field: keyof HostAdminDraft) {
@@ -123,9 +133,10 @@ export function HostFormDialog({
     setSaving(true)
     setServerError('')
     try {
+      const payload = effectiveDraft()
       const result = target?.mode === 'edit'
-        ? await api.updateHost(target.hostId, draft)
-        : await api.createHost(draft)
+        ? await api.updateHost(target.hostId, payload)
+        : await api.createHost(payload)
       onSaved(`${target?.mode === 'edit' ? '已保存' : '已登记'} ${result.host.label}`)
       onClose()
     } catch (error) {
@@ -190,7 +201,6 @@ export function HostFormDialog({
                     id={`${formId}-id`}
                     value={draft.id}
                     disabled={editing}
-                    placeholder="app-node-01"
                     autoComplete="off"
                     spellCheck={false}
                     aria-invalid={invalid('id')}
@@ -203,7 +213,6 @@ export function HostFormDialog({
                   <Input
                     id={`${formId}-label`}
                     value={draft.label}
-                    placeholder="应用节点"
                     autoComplete="off"
                     aria-invalid={invalid('label')}
                     onChange={(event) => update('label', event.currentTarget.value)}
@@ -215,7 +224,6 @@ export function HostFormDialog({
                   <Input
                     id={`${formId}-address`}
                     value={draft.address}
-                    placeholder="192.168.100.4 · 内网域名或 IPv4"
                     autoComplete="off"
                     spellCheck={false}
                     aria-invalid={invalid('address')}
@@ -244,7 +252,6 @@ export function HostFormDialog({
                   <Input
                     id={`${formId}-username`}
                     value={draft.username}
-                    placeholder="yard-reader"
                     autoComplete="off"
                     autoCapitalize="none"
                     spellCheck={false}
@@ -258,7 +265,6 @@ export function HostFormDialog({
                   <Input
                     id={`${formId}-group`}
                     value={draft.group}
-                    placeholder="Production"
                     autoComplete="off"
                     aria-invalid={invalid('group')}
                     onChange={(event) => update('group', event.currentTarget.value)}
@@ -270,7 +276,6 @@ export function HostFormDialog({
                   <Input
                     id={`${formId}-role`}
                     value={draft.role}
-                    placeholder="应用节点"
                     autoComplete="off"
                     aria-invalid={invalid('role')}
                     onChange={(event) => update('role', event.currentTarget.value)}
@@ -294,7 +299,6 @@ export function HostFormDialog({
                     <Input
                       id={`${formId}-fingerprint`}
                       value={draft.fingerprint}
-                      placeholder="SHA256:…"
                       autoComplete="off"
                       spellCheck={false}
                       className="font-mono text-xs"
