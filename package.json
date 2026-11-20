@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
-    "test:policy": "node --experimental-strip-types --test shared/access-control.test.ts shared/host-registry.test.ts server/connector-gate.test.ts",
+    "test:policy": "node --experimental-strip-types --test shared/access-control.test.ts shared/host-registry.test.ts server/connector-gate.test.ts server/auth.test.ts",
+    "hosts": "node scripts/berth-hosts.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

@@ -10,6 +10,7 @@ services:
       YARD_AUDIT_FILE: /app/data/audit.log
       YARD_SESSION_SECRET: ${YARD_SESSION_SECRET:?}
       YARD_PASSWORD_HASH: ${YARD_PASSWORD_HASH:?}
+      YARD_API_TOKEN: ${YARD_API_TOKEN:-}
       YARD_STATIC_ROOT: /app/public
       YARD_BIND: 0.0.0.0
       PORT: 8080

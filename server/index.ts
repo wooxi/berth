@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname, join, normalize, resolve } from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { createAuditSink, type AuditSink } from './audit.ts'
-import { createSessionStore, hashPassword, verifyPassword, type SessionStore } from './auth.ts'
+import { createSessionStore, hashPassword, verifyApiToken, verifyPassword, type SessionStore } from './auth.ts'
 import { loadConfig, type BerthConfig, type BerthHostConfig } from './config.ts'
 import { createCollector, createContainerCollector, createLogCollector } from './collectors.ts'
 import { createFileService, isProtectedPath, normalizeRemotePath } from './files.ts'
@@ -59,6 +59,25 @@ function readCookie(request: IncomingMessage, name: string): string | null {
 function currentSession(request: IncomingMessage) {
   const sessionId = readCookie(request, 'yard_session')
   return sessionId ? sessions.get(sessionId) : null
+}
+
+// 无人值守接口令牌：设置 YARD_API_TOKEN 后，脚本可用 Authorization: Bearer 调用主机登记 API。
+// 令牌只覆盖主机登记面（list/probe/create/update），文件、终端、日志等其余 API 仍需浏览器会话。
+const apiToken = process.env.YARD_API_TOKEN ?? ''
+
+function apiTokenAuthorized(request: IncomingMessage): boolean {
+  const header = request.headers.authorization
+  if (!header?.startsWith('Bearer ')) return false
+  return verifyApiToken(header.slice(7), apiToken)
+}
+
+function isHostAdminRequest(pathname: string, method: string | undefined): boolean {
+  if (method === 'GET' || method === 'POST') {
+    if (pathname === '/api/hosts' || pathname === '/api/hosts/probe') return true
+  }
+  if (method === 'GET' && /^\/api\/hosts\/[^/]+\/config$/.test(pathname)) return true
+  if (method === 'PUT' && /^\/api\/hosts\/[^/]+$/.test(pathname) && pathname !== '/api/hosts/probe') return true
+  return false
 }
 
 async function readBodyBuffer(request: IncomingMessage, limit = 8 * 1024 * 1024): Promise<Buffer> {
@@ -166,9 +185,17 @@ const server = createServer(async (request, response) => {
     }
 
     if (!session) {
-      sendJson(response, 401, { error: 'authentication required' })
-      return
+      if (!apiTokenAuthorized(request)) {
+        sendJson(response, 401, { error: 'authentication required' })
+        return
+      }
+      if (!isHostAdminRequest(pathname, request.method)) {
+        audit.record({ actor: 'api-token', action: 'api.denied', hostId: null, outcome: 'deny', detail: `${request.method} ${pathname}` })
+        sendJson(response, 403, { error: 'API token covers the host registry only' })
+        return
+      }
     }
+    const subjectId = session?.subjectId ?? 'api-token'
 
   if (pathname === '/api/hosts' && request.method === 'GET') {
     const snapshots = await Promise.all(config.hosts.filter((host) => host.enabled).map((host) => collector.collect(host)))
@@ -191,7 +218,7 @@ const server = createServer(async (request, response) => {
     }
     const result = createHost(config, payload)
     audit.record({
-      actor: session.subjectId,
+      actor: subjectId,
       action: 'hosts.create',
       hostId: result.ok ? result.host.id : null,
       outcome: result.ok ? 'allow' : 'deny',
@@ -215,7 +242,7 @@ const server = createServer(async (request, response) => {
       if (!address) throw new Error('缺少 address')
       const result = await probeHostFingerprint(address, port)
       audit.record({
-        actor: session.subjectId,
+        actor: subjectId,
         action: 'hosts.probe',
         hostId: null,
         outcome: result.ok ? 'allow' : 'deny',
@@ -251,7 +278,7 @@ const server = createServer(async (request, response) => {
     }
     const result = updateHost(config, hostId, payload)
     audit.record({
-      actor: session.subjectId,
+      actor: subjectId,
       action: 'hosts.update',
       hostId: result.ok ? result.host.id : hostId,
       outcome: result.ok ? 'allow' : 'deny',
@@ -274,7 +301,7 @@ const server = createServer(async (request, response) => {
     }
     const result = await containerCollector.list(host)
     audit.record({
-      actor: session.subjectId,
+      actor: subjectId,
       action: 'containers.list',
       hostId: host.id,
       outcome: result.ok ? 'allow' : 'deny',
@@ -295,7 +322,7 @@ const server = createServer(async (request, response) => {
     const lines = Number(url.searchParams.get('lines') ?? '120')
     const result = await logCollector.tail(host, unit, Number.isFinite(lines) ? lines : 120)
     audit.record({
-      actor: session.subjectId,
+      actor: subjectId,
       action: 'logs.read',
       hostId: host.id,
       outcome: result.ok ? 'allow' : 'deny',
@@ -318,7 +345,7 @@ const server = createServer(async (request, response) => {
     if (sub === 'list' && request.method === 'GET') {
       const result = await files.list(host, requestedPath)
       audit.record({
-        actor: session.subjectId,
+        actor: subjectId,
         action: 'files.list',
         hostId: host.id,
         outcome: result.ok ? 'allow' : 'deny',
@@ -331,7 +358,7 @@ const server = createServer(async (request, response) => {
     if (sub === 'read' && request.method === 'GET') {
       const result = await files.read(host, requestedPath)
       audit.record({
-        actor: session.subjectId,
+        actor: subjectId,
         action: 'files.read',
         hostId: host.id,
         outcome: result.ok ? 'allow' : 'deny',
@@ -344,7 +371,7 @@ const server = createServer(async (request, response) => {
     if (sub === 'download' && request.method === 'GET') {
       const result = await files.openDownload(host, requestedPath)
       audit.record({
-        actor: session.subjectId,
+        actor: subjectId,
         action: 'files.download',
         hostId: host.id,
         outcome: result.ok ? 'allow' : 'deny',
@@ -374,7 +401,7 @@ const server = createServer(async (request, response) => {
           const data = await readBodyBuffer(request)
           const result = await files.upload(host, directory, name, data)
           audit.record({
-            actor: session.subjectId,
+            actor: subjectId,
             action: 'files.upload',
             hostId: host.id,
             outcome: result.ok ? 'allow' : 'deny',
@@ -392,7 +419,7 @@ const server = createServer(async (request, response) => {
           if (!target) throw new Error('缺少 path')
           const result = await files.write(host, target, asString(payload.content))
           audit.record({
-            actor: session.subjectId,
+            actor: subjectId,
             action: 'files.write',
             hostId: host.id,
             outcome: result.ok ? 'allow' : 'deny',
@@ -407,7 +434,7 @@ const server = createServer(async (request, response) => {
           const name = asString(payload.name)
           const result = await files.mkdir(host, parent, name)
           audit.record({
-            actor: session.subjectId,
+            actor: subjectId,
             action: 'files.mkdir',
             hostId: host.id,
             outcome: result.ok ? 'allow' : 'deny',
@@ -422,7 +449,7 @@ const server = createServer(async (request, response) => {
           const to = asString(payload.to)
           const result = await files.rename(host, from, to)
           audit.record({
-            actor: session.subjectId,
+            actor: subjectId,
             action: 'files.rename',
             hostId: host.id,
             outcome: result.ok ? 'allow' : 'deny',
@@ -435,14 +462,14 @@ const server = createServer(async (request, response) => {
         if (sub === 'delete') {
           const target = asString(payload.path)
           if (isProtectedPath(target)) {
-            audit.record({ actor: session.subjectId, action: 'files.delete', hostId: host.id, outcome: 'deny', detail: 'system runtime path' })
+            audit.record({ actor: subjectId, action: 'files.delete', hostId: host.id, outcome: 'deny', detail: 'system runtime path' })
             sendJson(response, 400, { error: '系统运行时目录不允许删除' })
             return
           }
           const recursive = payload.recursive === true
           const result = await files.remove(host, target, recursive)
           audit.record({
-            actor: session.subjectId,
+            actor: subjectId,
             action: 'files.delete',
             hostId: host.id,
             outcome: result.ok ? 'allow' : 'deny',
@@ -457,7 +484,7 @@ const server = createServer(async (request, response) => {
           const to = asString(payload.to)
           const result = sub === 'copy' ? await files.copy(host, from, to) : await files.move(host, from, to)
           audit.record({
-            actor: session.subjectId,
+            actor: subjectId,
             action: `files.${sub}`,
             hostId: host.id,
             outcome: result.ok ? 'allow' : 'deny',
@@ -472,7 +499,7 @@ const server = createServer(async (request, response) => {
           const mode = asString(payload.mode)
           const result = await files.chmod(host, target, mode)
           audit.record({
-            actor: session.subjectId,
+            actor: subjectId,
             action: 'files.chmod',
             hostId: host.id,
             outcome: result.ok ? 'allow' : 'deny',
@@ -487,7 +514,7 @@ const server = createServer(async (request, response) => {
           const name = asString(payload.name)
           const result = await files.touch(host, parent, name)
           audit.record({
-            actor: session.subjectId,
+            actor: subjectId,
             action: 'files.touch',
             hostId: host.id,
             outcome: result.ok ? 'allow' : 'deny',

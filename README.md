@@ -45,6 +45,28 @@ docker compose --env-file secrets/env -f compose.prod.yaml up -d --build
 
 更新前端时用 `rsync -a --delete dist/ /srv/berth/dist/` 原地覆盖——**不要删目录重建**，绑定挂载会指向失效的 inode。
 
+## 添加服务器的接口
+
+浏览器之外，主机登记还可以走 REST API / CLI。设置 `YARD_API_TOKEN`（compose 环境变量，可选）后，`Authorization: Bearer <token>` 即可免登录调用**主机登记面**；文件、终端、容器、日志等其余 API 仍只认浏览器会话，token 越权访问返回 403 并计入审计。
+
+```sh
+# 登记（自动探测主机密钥指纹）
+BERTH_API_TOKEN=xxx node scripts/berth-hosts.mjs add \
+  --id lab-01 --label "Lab node" --address 192.0.2.10 --probe
+
+# 改字段 / 查看 / 单独探测
+BERTH_API_TOKEN=xxx node scripts/berth-hosts.mjs edit lab-01 --group Lab --role relay
+BERTH_API_TOKEN=xxx node scripts/berth-hosts.mjs list
+node scripts/berth-hosts.mjs probe --address 192.0.2.10 --port 22
+
+# 没有 token 时可用口令（BERTH_PASSWORD），或直接调 REST：
+curl -X POST http://<host>:5180/api/hosts \
+  -H "authorization: Bearer $BERTH_API_TOKEN" -H content-type:application/json \
+  -d '{"id":"lab-02","label":"Lab 2","address":"192.0.2.11","port":22,"username":"root","fingerprint":"SHA256:...","group":"Lab","role":"relay","runtime":"docker","systemd":true,"enabled":true}'
+```
+
+接口面清单：`GET /api/hosts`（列表）、`POST /api/hosts`（登记）、`PUT /api/hosts/:id`（编辑，标识不可改）、`GET /api/hosts/:id/config`（读取登记）、`POST /api/hosts/probe`（指纹探测，TOFU 式握手即断开，不涉及私钥）。全部操作写回 `hosts.json` 并留审计痕。
+
 ## 目录
 
 | 路径 | 内容 |

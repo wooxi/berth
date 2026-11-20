@@ -58,3 +58,11 @@ export function verifyPassword(candidate: string, expectedHash: string): boolean
 export function hashPassword(password: string): string {
   return createHash('sha256').update(password).digest('hex')
 }
+
+/** Constant-time comparison of a bearer token against the expected value. */
+export function verifyApiToken(candidate: string, expected: string): boolean {
+  if (!expected) return false
+  const presented = createHash('sha256').update(candidate).digest()
+  const secret = createHash('sha256').update(expected).digest()
+  return timingSafeEqual(presented, secret)
+}
