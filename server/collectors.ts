@@ -27,11 +27,11 @@ export type HostSnapshot = {
   collectedAt: string
 }
 
-const METRICS_SCRIPT = `LC_ALL=C bash -c '
+const METRICS_SCRIPT = `LC_ALL=C sh -c '
   echo "OS=$( (. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME") || echo unknown )"
   echo "KERNEL=$(uname -sr)"
-  echo "UPTIME=$(awk "{print int(\\$1/86400)\"d \"int((\\$1%86400)/3600)\"h \"int((\\$1%3600)/60)\"m\"}" /proc/uptime 2>/dev/null)"
-  echo "CORES=$(nproc 2>/dev/null || echo 1)"
+  echo "UPTIME=$(cut -d. -f1 /proc/uptime 2>/dev/null)"
+  echo "CORES=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 1)"
   echo "LOAD=$(cut -d" " -f1-3 /proc/loadavg 2>/dev/null)"
   echo "MEMTOTAL=$(awk "/MemTotal/{print int(\\$2/1024)}" /proc/meminfo 2>/dev/null)"
   echo "MEMAVAIL=$(awk "/MemAvailable/{print int(\\$2/1024)}" /proc/meminfo 2>/dev/null)"
@@ -46,6 +46,16 @@ function parseNumber(raw: string | undefined): number | undefined {
   if (raw === undefined) return undefined
   const value = Number(raw.trim())
   return Number.isFinite(value) ? value : undefined
+}
+
+function formatUptime(seconds: string | undefined): string | undefined {
+  if (seconds === undefined) return undefined
+  const value = Number(seconds.trim())
+  if (!Number.isFinite(value) || value < 0) return undefined
+  const d = Math.floor(value / 86400)
+  const h = Math.floor((value % 86400) / 3600)
+  const m = Math.floor((value % 3600) / 60)
+  return d > 0 ? `${d}d ${h}h ${m}m` : `${h}h ${m}m`
 }
 
 export function parseMetrics(output: string): Partial<HostSnapshot> {
@@ -74,7 +84,7 @@ export function parseMetrics(output: string): Partial<HostSnapshot> {
   const snapshot: Partial<HostSnapshot> = {
     os: values.get('OS'),
     kernel: values.get('KERNEL'),
-    uptime: values.get('UPTIME'),
+    uptime: formatUptime(values.get('UPTIME')),
     cores: parseNumber(values.get('CORES')),
     cpuPercent,
   }
