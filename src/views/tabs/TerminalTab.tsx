@@ -3,6 +3,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal as XTerm } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { Eraser, Plus, Power, Terminal as TerminalIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { terminalWebSocket, type HostSnapshot } from '../../api'
 import { Toolbar, ToolbarSep } from '@/components/common'
 import { Button } from '@/components/ui/button'
@@ -44,6 +45,32 @@ async function writeClipboard(text: string): Promise<boolean> {
     document.body.removeChild(ta)
   }
   return ok
+}
+
+/** 尝试读取系统剪贴板（HTTPS / localhost / 浏览器安全白名单下可用；部分环境尝试 execCommand 降级） */
+async function readClipboard(): Promise<string | null> {
+  if (navigator.clipboard?.readText) {
+    try {
+      return await navigator.clipboard.readText()
+    } catch {
+      return null
+    }
+  }
+  const ta = document.createElement('textarea')
+  ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'
+  document.body.appendChild(ta)
+  ta.focus()
+  let text = ''
+  try {
+    if (document.execCommand('paste')) {
+      text = ta.value
+    }
+  } catch {
+    text = ''
+  } finally {
+    document.body.removeChild(ta)
+  }
+  return text || null
 }
 
 /** 创建带分块流控的输入队列，避免一次性写入大量换行文本塞爆远端 PTY 缓冲区 */
@@ -102,16 +129,16 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [copiedHint, setCopiedHint] = useState(false)
-  const [pasteCaptureOpen, setPasteCaptureOpen] = useState(false)
   const mountRef = useRef<HTMLDivElement>(null)
-  const pasteBoxRef = useRef<HTMLTextAreaElement>(null)
   const sessionsRef = useRef<Session[]>([])
   const copyTimerRef = useRef<number | null>(null)
+  const lastCopiedRef = useRef<string>('')
 
   sessionsRef.current = sessions
   const active = sessions.find((session) => session.id === activeId) ?? null
 
-  const flashCopied = () => {
+  const flashCopied = (text: string) => {
+    lastCopiedRef.current = text
     setCopiedHint(true)
     if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current)
     copyTimerRef.current = window.setTimeout(() => setCopiedHint(false), 1400)
@@ -130,7 +157,7 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
     return () => cancelAnimationFrame(id)
   }, [visible, active])
 
-  // 挂载当前会话到 DOM，并绑定选定即复制与右键即粘贴
+  // 挂载当前会话到 DOM，并绑定选定即复制与右键直接粘贴
   useEffect(() => {
     if (!active) return
     const node = mountRef.current
@@ -149,7 +176,8 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
         const text = active.term.getSelection()
         if (!text) return
         void writeClipboard(text).then((ok) => {
-          if (ok) flashCopied()
+          if (ok) flashCopied(text)
+          else lastCopiedRef.current = text
           active.term.focus()
         })
       })
@@ -158,24 +186,25 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
     const onContextMenu = (event: MouseEvent) => {
       event.preventDefault()
       if (active.status !== 'ready') return
-      if (navigator.clipboard?.readText) {
-        navigator.clipboard
-          .readText()
-          .then((text) => {
-            if (text) {
-              active.term.paste(text)
-              active.term.clearSelection()
-            }
-            active.term.focus()
-          })
-          .catch(() => {
-            setPasteCaptureOpen(true)
-            requestAnimationFrame(() => pasteBoxRef.current?.focus())
-          })
-      } else {
-        setPasteCaptureOpen(true)
-        requestAnimationFrame(() => pasteBoxRef.current?.focus())
-      }
+      void readClipboard().then((text) => {
+        if (text !== null) {
+          if (text) {
+            active.term.paste(text)
+            active.term.clearSelection()
+          }
+          active.term.focus()
+          return
+        }
+        // 纯 HTTP 下浏览器禁止脚本读取系统剪贴板时，优先粘贴本终端内刚选定复制的内容
+        if (lastCopiedRef.current) {
+          active.term.paste(lastCopiedRef.current)
+          active.term.clearSelection()
+          active.term.focus()
+          return
+        }
+        toast.info('当前为 HTTP 地址，浏览器禁止右键读取外部剪贴板，请按 Ctrl+V 或配置安全源')
+        active.term.focus()
+      })
     }
 
     node.addEventListener('mouseup', onMouseUp)
@@ -243,7 +272,8 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
         const text = term.getSelection()
         if (text) {
           void writeClipboard(text).then((ok) => {
-            if (ok) flashCopied()
+            if (ok) flashCopied(text)
+            else lastCopiedRef.current = text
           })
           term.clearSelection()
         }
@@ -351,34 +381,6 @@ export function TerminalTab({ host, notify, visible = true }: { host: HostSnapsh
         {active ? (
           <>
             <div className="min-h-0 flex-1 overflow-hidden" ref={mountRef} />
-            {pasteCaptureOpen && (
-              <div className="absolute right-4 bottom-10 z-20 flex items-center gap-2 rounded-lg border border-white/15 bg-zinc-900/95 px-3 py-2 text-xs text-zinc-200 shadow-xl">
-                <span>请按 <kbd className="rounded border border-white/20 px-1 font-mono">Ctrl+V</kbd> 粘贴</span>
-                <textarea
-                  ref={pasteBoxRef}
-                  rows={1}
-                  aria-label="粘贴捕获区"
-                  className="h-5 w-20 resize-none rounded border border-white/20 bg-black/40 px-1.5 font-mono text-xs text-zinc-100 outline-none"
-                  onPaste={(event) => {
-                    event.preventDefault()
-                    const text = event.clipboardData.getData('text')
-                    if (text) {
-                      active.term.paste(text)
-                      active.term.clearSelection()
-                    }
-                    setPasteCaptureOpen(false)
-                    active.term.focus()
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Escape') {
-                      setPasteCaptureOpen(false)
-                      active.term.focus()
-                    }
-                  }}
-                  onBlur={() => setPasteCaptureOpen(false)}
-                />
-              </div>
-            )}
             <div className="flex shrink-0 items-center gap-4 border-t border-white/10 bg-black/20 px-4 py-1.5 font-mono text-xs text-zinc-400">
               <span className="flex items-center gap-2">
                 <span aria-hidden="true" className={cn('size-1.5 rounded-full', active.status === 'ready' ? 'bg-[#8fd5bf]' : active.status === 'connecting' ? 'bg-amber-400' : 'bg-red-400')} />
