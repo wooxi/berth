@@ -4,7 +4,9 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { Eraser, Plus, Power, Terminal as TerminalIcon } from 'lucide-react'
 import { terminalWebSocket, type HostSnapshot } from '../../api'
-import { Toolbar } from '../../components/Toolbar'
+import { Toolbar, ToolbarSep } from '@/components/common'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 type Session = {
   id: string
@@ -63,23 +65,23 @@ export function TerminalTab({ host, notify }: { host: HostSnapshot; notify: (mes
   function open() {
     const term = new XTerm({
       cursorBlink: true,
-      fontSize: 12.5,
+      fontSize: 13,
       fontFamily: "ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace",
       lineHeight: 1.35,
       allowProposedApi: true,
       theme: {
-        background: '#0a1210',
-        foreground: '#b9c6c0',
-        cursor: '#5fd4c4',
-        cursorAccent: '#0a1210',
-        selectionBackground: 'rgba(95, 212, 196, 0.24)',
-        black: '#0a1210',
+        background: '#0a0a09',
+        foreground: '#cfcdc7',
+        cursor: '#8fd5bf',
+        cursorAccent: '#0a0a09',
+        selectionBackground: 'rgba(143, 213, 191, 0.24)',
+        black: '#0a0a09',
         red: '#f4776b',
         green: '#6ee7a8',
         yellow: '#f5b942',
         blue: '#7fb3f5',
         magenta: '#c79bf0',
-        cyan: '#5fd4c4',
+        cyan: '#8fd5bf',
         white: '#e8eeeb',
         brightBlack: '#6d7c76',
       },
@@ -153,63 +155,48 @@ export function TerminalTab({ host, notify }: { host: HostSnapshot; notify: (mes
 
   const readyCount = sessions.filter((session) => session.status === 'ready').length
 
+
   return (
     <>
       <Toolbar info={`${readyCount} 个活动会话 · ${host.address}`}>
-        <div className="toolbar-group">
-          <button className="button button-primary compact-button" type="button" onClick={open}>
-            <Plus size={14} aria-hidden="true" />新建会话
-          </button>
-        </div>
-        <span className="toolbar-sep" aria-hidden="true" />
-        <div className="toolbar-group">
-          <button className="button button-secondary compact-button" type="button" onClick={disconnect} disabled={!active || active.status !== 'ready'}>
-            <Power size={14} aria-hidden="true" />断开
-          </button>
-          <button className="button button-secondary compact-button" type="button" onClick={clear} disabled={!active}>
-            <Eraser size={14} aria-hidden="true" />清屏
-          </button>
-        </div>
+        <Button size="sm" onClick={open}><Plus />新建会话</Button>
+        <ToolbarSep />
+        <Button variant="secondary" size="sm" onClick={disconnect} disabled={!active || active.status !== 'ready'}><Power />断开</Button>
+        <Button variant="secondary" size="sm" onClick={clear} disabled={!active}><Eraser />清屏</Button>
         {sessions.length > 1 && (
           <>
-            <span className="toolbar-sep" aria-hidden="true" />
-            <div className="term-sessions" role="group" aria-label="切换会话">
+            <ToolbarSep />
+            <div role="group" aria-label="切换会话" className="flex gap-1">
               {sessions.map((session, index) => (
-                <button
-                  key={session.id}
-                  type="button"
-                  aria-pressed={session.id === activeId}
-                  onClick={() => setActiveId(session.id)}
-                >
+                <Button key={session.id} variant={session.id === activeId ? 'default' : 'secondary'} size="xs" aria-pressed={session.id === activeId} onClick={() => setActiveId(session.id)}>
                   #{index + 1}
-                </button>
+                </Button>
               ))}
             </div>
           </>
         )}
       </Toolbar>
 
-      <div className="term-wrap">
+      <div className="flex min-h-0 flex-1 flex-col bg-term">
         {active ? (
           <>
-            <div className="term-mount" ref={mountRef} />
-            <div className="term-status">
-              <span>
-                <span className={`term-dot ${active.status}`} aria-hidden="true" />
+            <div className="min-h-0 flex-1 overflow-hidden" ref={mountRef} />
+            <div className="flex shrink-0 items-center gap-4 border-t border-white/10 bg-black/20 px-4 py-1.5 font-mono text-xs text-zinc-400">
+              <span className="flex items-center gap-2">
+                <span aria-hidden="true" className={cn('size-1.5 rounded-full', active.status === 'ready' ? 'bg-[#8fd5bf]' : active.status === 'connecting' ? 'bg-amber-400' : 'bg-red-400')} />
                 {active.status === 'ready' ? '已连接' : active.status === 'connecting' ? '连接中' : '已断开'}
               </span>
               <span>{host.hostId}</span>
               <span>{active.term.cols}×{active.term.rows}</span>
-              <button className="button button-ghost compact-button" type="button" style={{ marginInlineStart: 'auto' }} onClick={() => close(active.id)}>
-                关闭会话
-              </button>
+              <Button variant="ghost" size="xs" className="ml-auto text-zinc-400 hover:bg-white/10 hover:text-zinc-100" onClick={() => close(active.id)}>关闭会话</Button>
             </div>
           </>
         ) : (
-          <div className="term-empty">
-            <TerminalIcon size={22} aria-hidden="true" />
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-zinc-400">
+            <TerminalIcon className="size-6" aria-hidden="true" />
             <span>尚未建立会话</span>
-            <span>点击「新建会话」连接 <kbd>{host.hostId}</kbd></span>
+            <span className="text-xs">点击「新建会话」连接 <kbd className="rounded border border-white/15 px-1.5 py-0.5 font-mono">{host.hostId}</kbd></span>
+            <Button size="sm" onClick={open}><Plus />新建会话</Button>
           </div>
         )}
       </div>

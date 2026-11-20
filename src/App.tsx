@@ -1,21 +1,30 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Activity,
-  ChevronRight,
+  KeyRound,
   LayoutDashboard,
   LogOut,
+  Moon,
+  Plus,
+  RefreshCw,
   Search,
-  Server,
-  ShieldCheck,
-  Terminal,
+  Sun,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { api, type AuditEvent, type HostSnapshot } from './api'
 import { BerthMark } from './components/BerthMark'
 import { CommandPalette, type PaletteTarget } from './components/CommandPalette'
+import { StatusDot, Spinner } from './components/common'
+import { Badge } from './components/ui/badge'
+import { Button } from './components/ui/button'
+import { Toaster } from './components/ui/sonner'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip'
+import { useTheme } from './lib/theme'
+import { cn } from './lib/utils'
 import { OverviewView } from './views/Overview'
 import { ConsoleView, type ConsoleTab } from './views/Console'
 import { AccessView } from './views/Access'
 import { LoginView } from './views/Login'
+import { HostFormDialog, type HostFormTarget } from './components/HostFormDialog'
 
 type View = 'overview' | 'console' | 'access'
 
@@ -29,6 +38,7 @@ const TAB_LABEL: Record<ConsoleTab, string> = {
 }
 
 export default function App() {
+  const { theme, toggle } = useTheme()
   const [authed, setAuthed] = useState<boolean | null>(null)
   const [view, setView] = useState<View>('overview')
   const [consoleHostId, setConsoleHostId] = useState<string | null>(null)
@@ -37,8 +47,10 @@ export default function App() {
   const [audit, setAudit] = useState<AuditEvent[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [toast, setToast] = useState('')
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [hostForm, setHostForm] = useState<HostFormTarget | null>(null)
+
+  const notify = useCallback((message: string) => { toast(message) }, [])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -67,12 +79,6 @@ export default function App() {
     return () => window.clearInterval(timer)
   }, [authed, refresh])
 
-  useEffect(() => {
-    if (!toast) return
-    const timeout = window.setTimeout(() => setToast(''), 2600)
-    return () => window.clearTimeout(timeout)
-  }, [toast])
-
   const activeHost = hosts.find((host) => host.hostId === consoleHostId) ?? null
 
   useEffect(() => {
@@ -100,15 +106,9 @@ export default function App() {
   }, [])
 
   const navigate = useCallback((target: PaletteTarget) => {
-    if ('view' in target) {
-      if (target.view === 'hosts') setView('overview')
-      else setView(target.view === 'overview' ? 'overview' : 'access')
-    } else {
-      setConsoleHostId(target.hostId)
-      setConsoleTab(target.tab)
-      setView('console')
-    }
-  }, [])
+    if ('view' in target) setView(target.view)
+    else openHost(target.hostId, target.tab)
+  }, [openHost])
 
   const logout = useCallback(async () => {
     await api.logout().catch(() => {})
@@ -120,187 +120,197 @@ export default function App() {
   const issues = hosts.length - onlineCount
 
   if (authed === null) {
-    return <div className="login-shell"><p className="page-sub">加载中…</p></div>
+    return <div className="grid h-full place-items-center text-muted-foreground"><Spinner className="size-5" /></div>
   }
   if (authed === false) {
-    return <LoginView onLogin={() => setAuthed(true)} />
+    return (
+      <>
+        <LoginView onLogin={() => setAuthed(true)} />
+        <Toaster />
+      </>
+    )
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar-brand">
-        <button className="brand-lockup" type="button" onClick={() => setView('overview')}>
-          <BerthMark size={26} title="Berth" />
-          <span className="brand-name">Berth</span>
-        </button>
-        <span className="brand-tag">私有服务器</span>
-
-        <span className="topbar-spacer" />
-
-        <span className="topbar-stat">
-          <span className="figure">{onlineCount}</span>/{hosts.length} 在线
-        </span>
-        {issues > 0 && (
-          <span className="topbar-stat" style={{ color: 'var(--warn)' }}>
-            <span className="figure">{issues}</span> 待查
-          </span>
-        )}
-
-        <button className="command-trigger" type="button" onClick={() => setPaletteOpen(true)} aria-keyshortcuts="Meta+K Control+K">
-          <Search size={14} aria-hidden="true" />
-          <span>搜索主机</span>
-          <kbd>⌘K</kbd>
-        </button>
-
-        <button className="icon-button notification-button" type="button" aria-label={`${issues} 台主机待查`} onClick={() => setView('overview')}>
-          <Activity size={16} aria-hidden="true" />
-          {issues > 0 && <i />}
-        </button>
-      </header>
-
-      <aside className="rail" aria-label="导航">
-        <button className="rail-search" type="button" onClick={() => setPaletteOpen(true)}>
-          <Search size={14} aria-hidden="true" />
-          <span>搜索</span>
-          <kbd>⌘K</kbd>
-        </button>
-
-        <div className="rail-group">
-          <p className="rail-group-title">
-            <span>服务器</span>
-            <span>{hosts.length}</span>
-          </p>
-          {hosts.map((host) => (
-            <button
-              key={host.hostId}
-              type="button"
-              className="host-item"
-              aria-current={view === 'console' && consoleHostId === host.hostId ? 'true' : undefined}
-              onClick={() => openHost(host.hostId)}
-              title={`${host.label} · ${host.address}`}
-            >
-              <span className="host-dot" data-state={host.status} aria-hidden="true" />
-              <span className="host-name">{host.label}</span>
-              <span className="host-meta">
-                {host.status === 'online'
-                  ? `${host.cpuPercent ?? 0}%`
-                  : host.status === 'error' ? '失败' : '离线'}
-              </span>
+    <TooltipProvider delayDuration={250}>
+      <div className="flex h-full">
+        {/* ============ 侧栏 ============ */}
+        <aside className="flex w-[264px] shrink-0 flex-col border-r border-border bg-sidebar" aria-label="导航">
+          <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
+            <button type="button" className="flex items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/60" onClick={() => setView('overview')}>
+              <BerthMark size={28} />
+              <span className="text-[17px] font-semibold tracking-tight">Berth</span>
             </button>
-          ))}
-          {hosts.length === 0 && (
-            <p className="rail-group-title" style={{ margin: '2px 8px' }}>
-              <span>{loading ? '正在采集…' : '还没有登记主机'}</span>
-            </p>
-          )}
-        </div>
-
-        <div className="rail-group">
-          <button
-            type="button"
-            className="nav-item"
-            aria-current={view === 'overview' ? 'page' : undefined}
-            onClick={() => setView('overview')}
-          >
-            <LayoutDashboard size={15} strokeWidth={1.8} aria-hidden="true" />
-            <span>概览</span>
-          </button>
-          <button
-            type="button"
-            className="nav-item"
-            aria-current={view === 'access' ? 'page' : undefined}
-            onClick={() => setView('access')}
-          >
-            <ShieldCheck size={15} strokeWidth={1.8} aria-hidden="true" />
-            <span>凭据与权限</span>
-          </button>
-        </div>
-
-        <div className="rail-foot">
-          <button className="owner-button" type="button" onClick={() => void logout()}>
-            <span className="owner-avatar" aria-hidden="true">OW</span>
-            <span className="owner-copy">
-              <b>Owner</b>
-              <small>退出登录</small>
-            </span>
-            <LogOut size={14} aria-hidden="true" />
-          </button>
-        </div>
-      </aside>
-
-      <main className="canvas-card">
-        <div className="crumbbar">
-          <div className="crumbs">
-            <button type="button" onClick={() => setView('overview')}>Berth</button>
-            <ChevronRight size={12} aria-hidden="true" />
-            {view === 'console' && activeHost ? (
-              <>
-                <b>{activeHost.label}</b>
-                <ChevronRight size={12} aria-hidden="true" />
-                <b>{TAB_LABEL[consoleTab]}</b>
-              </>
-            ) : (
-              <b>{view === 'overview' ? '概览' : '凭据与权限'}</b>
-            )}
+            <span className="text-xs text-muted-foreground">私有服务器</span>
           </div>
-          <div className="crumbbar-actions">
-            {view === 'console' && (
-              <button className="button button-quiet compact-button" type="button" onClick={() => setView('overview')}>
-                <LayoutDashboard size={14} aria-hidden="true" />
-                概览
-              </button>
-            )}
-            <span className="live-pill"><span aria-hidden="true" />实时</span>
+
+          <div className="px-3 pb-3">
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              aria-keyshortcuts="Meta+K Control+K"
+              className="flex h-9 w-full items-center gap-2 rounded-md border border-border bg-card px-2.5 text-[13px] text-muted-foreground transition-colors hover:border-input hover:text-foreground"
+            >
+              <Search className="size-4" aria-hidden="true" />
+              <span className="flex-1 text-left">搜索主机或命令</span>
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">Ctrl K</kbd>
+            </button>
           </div>
-        </div>
 
-        <div className="page">
-          {view === 'overview' && (
-            <OverviewView
-              hosts={hosts}
-              audit={audit}
-              error={error}
-              loading={loading}
-              onOpenConsole={openHost}
-              onOpenAccess={() => setView('access')}
-            />
-          )}
+          <nav className="grid gap-0.5 px-3 pb-3">
+            <NavItem active={view === 'overview'} icon={LayoutDashboard} onClick={() => setView('overview')}>概览</NavItem>
+            <NavItem active={view === 'access'} icon={KeyRound} onClick={() => setView('access')}>凭据与权限</NavItem>
+          </nav>
 
-          {view === 'console' && activeHost && (
-            <ConsoleView
-              key={activeHost.hostId}
-              host={activeHost}
-              tab={consoleTab}
-              onTabChange={setConsoleTab}
-              notify={setToast}
-            />
-          )}
-
-          {view === 'console' && !activeHost && (
-            <div className="term-empty">
-              <Server size={20} aria-hidden="true" />
-              <span>从左侧选择一台服务器</span>
+          <div className="flex items-center justify-between px-5 pt-1 pb-1.5 text-xs font-medium text-muted-foreground">
+            <span>服务器</span>
+            <span className="font-mono tabular-nums">{onlineCount}/{hosts.length}</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+            <div className="grid gap-0.5">
+              {hosts.map((host) => {
+                const active = view === 'console' && consoleHostId === host.hostId
+                return (
+                  <button
+                    key={host.hostId}
+                    type="button"
+                    aria-current={active ? 'true' : undefined}
+                    onClick={() => openHost(host.hostId)}
+                    title={`${host.label} · ${host.address}`}
+                    className={cn(
+                      'grid grid-cols-[auto_1fr_auto] items-center gap-2.5 rounded-md px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60',
+                      active ? 'bg-primary/10' : 'hover:bg-muted',
+                    )}
+                  >
+                    <StatusDot status={host.status} />
+                    <span className="min-w-0">
+                      <span className={cn('block truncate text-[13px] leading-tight', active ? 'font-semibold text-primary' : 'font-medium')}>{host.label}</span>
+                      <span className="block truncate font-mono text-[11px] leading-tight text-muted-foreground">{host.address}</span>
+                    </span>
+                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                      {host.status === 'online' ? `${host.cpuPercent ?? 0}%` : host.status === 'error' ? '失败' : '离线'}
+                    </span>
+                  </button>
+                )
+              })}
+              {hosts.length === 0 && (
+                <p className="px-2.5 py-2 text-xs text-muted-foreground">{loading ? '正在采集…' : '还没有登记主机'}</p>
+              )}
             </div>
-          )}
+          </div>
 
-          {view === 'access' && (
-            <AccessView hosts={hosts} onAction={setToast} onLogout={() => void logout()} />
-          )}
-        </div>
+          <div className="flex items-center gap-2 border-t border-border p-3">
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-1.5 py-1 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/60"
+            >
+              <span className="grid size-8 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground" aria-hidden="true">OW</span>
+              <span className="min-w-0 leading-tight">
+                <b className="block text-[13px] font-medium">Owner</b>
+                <small className="text-xs text-muted-foreground">退出登录</small>
+              </span>
+              <LogOut className="ml-auto size-4 text-muted-foreground" aria-hidden="true" />
+            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={toggle} aria-label={theme === 'dark' ? '切换为浅色' : '切换为深色'}>
+                  {theme === 'dark' ? <Sun /> : <Moon />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{theme === 'dark' ? '浅色模式' : '深色模式'}</TooltipContent>
+            </Tooltip>
+          </div>
+        </aside>
 
-        <span className="sr-only" aria-live="polite">{`${onlineCount} 台在线，${issues} 台待查`}</span>
-      </main>
+        {/* ============ 主区 ============ */}
+        <main className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-6">
+            <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <button type="button" className="hover:text-foreground" onClick={() => setView('overview')}>Berth</button>
+              <span aria-hidden="true">/</span>
+              {view === 'console' && activeHost ? (
+                <>
+                  <b className="font-semibold text-foreground">{activeHost.label}</b>
+                  <span aria-hidden="true">/</span>
+                  <b className="font-semibold text-foreground">{TAB_LABEL[consoleTab]}</b>
+                </>
+              ) : (
+                <b className="font-semibold text-foreground">{view === 'overview' ? '概览' : '凭据与权限'}</b>
+              )}
+            </div>
+            <span className="flex-1" />
+            <Badge tone={issues > 0 ? 'warn' : 'ok'} dot>
+              {issues > 0 ? `${onlineCount}/${hosts.length} 在线 · ${issues} 待查` : `${onlineCount}/${hosts.length} 全部在线`}
+            </Badge>
+            <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={loading}>
+              <RefreshCw className={loading ? 'spin' : ''} />刷新
+            </Button>
+            {view === 'console' && (
+              <Button size="sm" onClick={() => setView('overview')} variant="ghost"><LayoutDashboard />概览</Button>
+            )}
+          </header>
+
+          <div className="min-h-0 flex-1">
+            {view === 'overview' && (
+              <OverviewView
+                hosts={hosts}
+                audit={audit}
+                error={error}
+                loading={loading}
+                onOpenConsole={openHost}
+                onOpenAccess={() => setView('access')}
+                onAddHost={() => setHostForm({ mode: 'create' })}
+                onEditHost={(hostId) => setHostForm({ mode: 'edit', hostId })}
+              />
+            )}
+            {view === 'console' && activeHost && (
+              <ConsoleView key={activeHost.hostId} host={activeHost} tab={consoleTab} onTabChange={setConsoleTab} notify={notify} />
+            )}
+            {view === 'console' && !activeHost && (
+              <div className="grid h-full place-items-center text-muted-foreground"><span className="flex items-center gap-2"><Plus className="size-4" />从左侧选择一台服务器</span></div>
+            )}
+            {view === 'access' && <AccessView hosts={hosts} onAction={notify} onLogout={() => void logout()} />}
+          </div>
+          <span className="sr-only" aria-live="polite">{`${onlineCount} 台在线，${issues} 台待查`}</span>
+        </main>
+      </div>
 
       <CommandPalette
         open={paletteOpen}
         hosts={hosts}
-        onClose={() => setPaletteOpen(false)}
+        onOpenChange={setPaletteOpen}
         onNavigate={navigate}
         onRefresh={() => void refresh()}
         onLogout={() => void logout()}
       />
-
-      {toast && <div className="toast" role="status"><Terminal size={13} aria-hidden="true" />{toast}</div>}
-    </div>
+      <HostFormDialog
+        target={hostForm}
+        onClose={() => setHostForm(null)}
+        onSaved={(message) => {
+          notify(message)
+          void refresh()
+        }}
+      />
+      <Toaster />
+    </TooltipProvider>
   )
 }
+
+function NavItem({ active, icon: Icon, onClick, children }: { active: boolean; icon: typeof KeyRound; onClick: () => void; children: string }) {
+  return (
+    <button
+      type="button"
+      aria-current={active ? 'page' : undefined}
+      onClick={onClick}
+      className={cn(
+        'flex h-9 items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60',
+        active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+      )}
+    >
+      <Icon className="size-4" aria-hidden="true" />
+      {children}
+    </button>
+  )
+}
+

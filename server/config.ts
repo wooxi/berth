@@ -17,6 +17,7 @@ export type BerthHostConfig = {
 
 export type BerthConfig = {
   hosts: BerthHostConfig[]
+  hostsPath: string
   auditPath: string
   privateKeyPath: string
   knownHostsPath: string
@@ -59,6 +60,7 @@ export function loadConfig(): BerthConfig {
 
   return {
     hosts,
+    hostsPath,
     auditPath: requireEnv('YARD_AUDIT_FILE', '/app/data/audit.log'),
     privateKeyPath: requireEnv('YARD_SSH_KEY', '/run/secrets/yard_ssh_key'),
     knownHostsPath: requireEnv('YARD_KNOWN_HOSTS', '/run/secrets/yard_known_hosts'),

@@ -1,0 +1,543 @@
+﻿<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Berth v3 — 界面重设计预览</title>
+<!--
+  Berth v2 静态设计预览(仅视觉,数据均为虚构,不发任何请求)。
+  方向:「港口控制台」— 窄图标导轨 + 主机面板 + 内容区;双主题;青绿色单一强调色。
+  交互:导轨切页 / 主机选中 / 工作区标签 / 主题切换 / ⌘K 命令面板。
+-->
+<style>
+/* ============ 设计令牌 ============ */
+:root{
+  --font-sans:'Inter var',Inter,ui-sans-serif,system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monospace;
+  --r-lg:16px; --r-md:10px; --r-sm:7px;
+  --ease:cubic-bezier(.2,.8,.2,1); --dur:160ms;
+  --rail-w:64px; --panel-w:264px; --bar-h:60px;
+}
+[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0f0f0e; --bg-2:#141413; --surface:#191918; --surface-2:#201f1e; --surface-3:#2a2927;
+  --line:#262523; --line-2:#34322f;
+  --ink:#ecebe8; --ink-2:#a4a29c; --ink-3:#6f6d68;
+  --accent:#8fd5bf; --accent-ink:#0c1d18; --accent-soft:rgb(143 213 191 / 11%); --accent-line:rgb(143 213 191 / 32%);
+  --ok:#8fd5bf; --ok-soft:rgb(143 213 191 / 11%);
+  --warn:#d9ad5f; --warn-soft:rgb(217 173 95 / 12%);
+  --fail:#e5796c; --fail-soft:rgb(229 121 108 / 12%);
+  --info:#a4a29c; --info-soft:rgb(164 162 156 / 12%);
+  --term:#0a0a09; --shadow:0 20px 50px rgb(0 0 0 / 55%);
+  --glow:none;
+}
+[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f3f0ea; --bg-2:#f8f6f1; --surface:#fdfcf9; --surface-2:#f4f1ea; --surface-3:#e9e5dc;
+  --line:#e4dfd4; --line-2:#d3cdbf;
+  --ink:#1d1c19; --ink-2:#57544c; --ink-3:#8d897e;
+  --accent:#1f4d43; --accent-ink:#f6f3ec; --accent-soft:rgb(31 77 67 / 8%); --accent-line:rgb(31 77 67 / 35%);
+  --ok:#1f4d43; --ok-soft:rgb(31 77 67 / 8%);
+  --warn:#9a6b1f; --warn-soft:rgb(154 107 31 / 10%);
+  --fail:#a8402f; --fail-soft:rgb(168 64 47 / 9%);
+  --info:#57544c; --info-soft:rgb(87 84 76 / 9%);
+  --term:#1d1c19; --shadow:0 20px 50px rgb(29 28 25 / 16%);
+  --glow:none;
+}*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--font-sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+button,input{font:inherit;color:inherit}
+button{background:none;border:0;padding:0;cursor:pointer}
+svg{display:block;flex:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+::selection{background:var(--accent);color:var(--accent-ink)}
+.mono{font-family:var(--font-mono)}
+.num{font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:10px;border:3px solid transparent;background-clip:content-box}
+
+/* ============ 外壳 ============ */
+.app{height:100dvh;display:grid;grid-template-columns:var(--rail-w) var(--panel-w) minmax(0,1fr);background:var(--bg)}
+.rail{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0;border-right:1px solid var(--line);background:var(--bg-2)}
+.logo{width:38px;height:38px;margin-bottom:12px;color:var(--accent)}
+.rail-btn{position:relative;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;color:var(--ink-3);transition:all var(--dur) var(--ease)}
+.rail-btn:hover{background:var(--surface-2);color:var(--ink)}
+.rail-btn[aria-current="page"]{background:var(--accent-soft);color:var(--accent)}
+.rail-btn[aria-current="page"]::before{content:"";position:absolute;left:-11px;top:11px;bottom:11px;width:3px;border-radius:0 3px 3px 0;background:var(--accent)}
+.rail-btn .tip{position:absolute;left:54px;padding:4px 9px;border-radius:7px;background:var(--surface-3);color:var(--ink);font-size:12px;white-space:nowrap;opacity:0;pointer-events:none;transform:translateX(-4px);transition:all var(--dur) var(--ease);z-index:20;border:1px solid var(--line-2)}
+.rail-btn:hover .tip{opacity:1;transform:none}
+.rail .grow{flex:1}
+.avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:13px}
+
+/* 主机面板 */
+.panel{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--bg-2)}
+.panel-head{padding:18px 16px 12px}
+.brand{display:flex;align-items:baseline;gap:8px}
+.brand h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.02em}
+.brand span{font-size:11.5px;color:var(--ink-3)}
+.search{display:flex;align-items:center;gap:8px;width:100%;margin-top:14px;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface);color:var(--ink-3);font-size:13px;text-align:left;transition:border-color var(--dur)}
+.search:hover{border-color:var(--line-2)}
+.search span{flex:1}
+kbd{padding:1px 5px;border:1px solid var(--line-2);border-radius:5px;background:var(--surface-2);font:10.5px var(--font-mono);color:var(--ink-3)}
+.seg{display:flex;gap:4px;padding:0 16px 10px}
+.chip{height:26px;padding:0 10px;border-radius:99px;font-size:12px;color:var(--ink-2);border:1px solid var(--line);transition:all var(--dur)}
+.chip:hover{border-color:var(--line-2);color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.hosts{flex:1;overflow-y:auto;padding:0 10px 10px;display:grid;align-content:start;gap:4px}
+.host{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;width:100%;padding:10px;border:1px solid transparent;border-radius:var(--r-md);text-align:left;transition:all var(--dur) var(--ease)}
+.host:hover{background:var(--surface)}
+.host[aria-current="true"]{background:var(--surface);border-color:var(--line-2);box-shadow:inset 3px 0 0 var(--accent)}
+.berth-ic{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--surface-2);color:var(--ink-2);position:relative}
+.berth-ic i{position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;border:2px solid var(--bg-2);background:var(--ink-3)}
+.host[aria-current="true"] .berth-ic i{border-color:var(--surface)}
+i[data-s="online"]{background:var(--ok)!important}i[data-s="error"]{background:var(--fail)!important}i[data-s="offline"]{background:var(--ink-3)!important}
+.host b{display:block;font-size:13.5px;font-weight:600;line-height:1.25}
+.host small{display:block;color:var(--ink-3);font:11.5px var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.host .lat{font-size:11.5px;color:var(--ink-3)}
+.panel-foot{padding:12px 16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:8px;color:var(--ink-3);font-size:12px}
+.add-host{display:flex;align-items:center;justify-content:center;gap:6px;margin:0 10px 10px;height:36px;border:1px dashed var(--line-2);border-radius:var(--r-md);color:var(--ink-2);font-size:13px;transition:all var(--dur)}
+.add-host:hover{border-color:var(--accent-line);color:var(--accent);background:var(--accent-soft)}
+
+/* 主区 */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg);background-image:var(--glow);background-repeat:no-repeat}
+.topbar{height:var(--bar-h);display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid var(--line);flex:none}
+.crumb{display:flex;align-items:center;gap:8px;color:var(--ink-3);font-size:13px}
+.crumb b{color:var(--ink);font-weight:600}
+.spacer{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:99px;font-size:12px;font-weight:500;background:var(--surface-2);color:var(--ink-2)}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill[data-t="ok"]{background:var(--ok-soft);color:var(--ok)}
+.pill[data-t="warn"]{background:var(--warn-soft);color:var(--warn)}
+.pill[data-t="fail"]{background:var(--fail-soft);color:var(--fail)}
+.pill[data-t="info"]{background:var(--info-soft);color:var(--info)}
+.pill.plain::before{display:none}
+.icon-btn{display:grid;place-items:center;width:36px;height:36px;border-radius:var(--r-md);color:var(--ink-2);border:1px solid var(--line);background:var(--surface);transition:all var(--dur)}
+.icon-btn:hover{color:var(--ink);border-color:var(--line-2);background:var(--surface-2)}
+.btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:var(--r-md);font-size:13px;font-weight:500;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);transition:all var(--dur)}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--fail);border-color:transparent;background:var(--fail-soft)}
+.btn.sm{height:30px;padding:0 10px;font-size:12.5px}
+.scroll{flex:1;min-height:0;overflow-y:auto}
+.page{display:none;padding:28px 28px 40px;max-width:1280px;margin:0 auto;animation:in 260ms var(--ease)}
+.page.on{display:block}
+@keyframes in{from{opacity:0;transform:translateY(6px)}}
+.page-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:22px}
+.page-head h2{margin:0;font-size:26px;font-weight:700;letter-spacing:-.03em;line-height:1.15}
+.page-head p{margin:4px 0 0;color:var(--ink-2)}
+
+/* 卡片 */
+.card{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);overflow:hidden}
+.card-h{display:flex;align-items:center;gap:10px;padding:16px 18px 0}
+.card-h h3{margin:0;font-size:13.5px;font-weight:600}
+.card-h small{color:var(--ink-3);font-size:12px}
+.card-b{padding:16px 18px 18px}
+
+/* 概览:bento */
+.bento{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+.kpi{grid-column:span 3;padding:18px;display:flex;flex-direction:column;gap:6px;position:relative}
+.kpi label{font-size:12.5px;color:var(--ink-2);display:flex;align-items:center;gap:7px}
+.kpi label svg{color:var(--ink-3)}
+.kpi .v{font-size:36px;font-weight:700;letter-spacing:-.04em;line-height:1.1}
+.kpi .v em{font-style:normal;font-size:16px;color:var(--ink-3);font-weight:500;margin-left:3px}
+.kpi .d{font-size:12px;color:var(--ink-3)}
+.kpi .d.up{color:var(--ok)}.kpi .d.down{color:var(--fail)}
+.kpi svg.spark{position:absolute;right:14px;top:16px;width:84px;height:34px}
+.kpi[data-t="warn"]{border-color:var(--warn-soft)}
+.kpi[data-t="warn"] .v{color:var(--warn)}
+.fleet{grid-column:span 8}
+.side{grid-column:span 4;display:grid;gap:14px;align-content:start}
+.fleet-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.hc{padding:14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface-2);text-align:left;transition:all var(--dur) var(--ease);display:grid;gap:10px}
+.hc:hover{border-color:var(--accent-line);transform:translateY(-1px)}
+.hc-top{display:flex;align-items:center;gap:9px}
+.hc-top b{font-size:14px}
+.hc-top .pill{margin-left:auto}
+.hc small{font:11.5px var(--font-mono);color:var(--ink-3)}
+.meter{display:grid;gap:7px}
+.m-row{display:grid;grid-template-columns:34px 1fr 38px;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-3)}
+.m-row span:last-child{text-align:right;color:var(--ink-2)}
+.bar{height:5px;border-radius:5px;background:var(--surface-3);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:5px;background:var(--accent)}
+.bar i.w{background:var(--warn)}.bar i.f{background:var(--fail)}
+.feed{display:grid;gap:0}
+.feed li{list-style:none;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;padding:10px 0;border-top:1px solid var(--line)}
+.feed li:first-child{border-top:0;padding-top:0}
+.feed ul{margin:0;padding:0}
+.dot{width:8px;height:8px;margin-top:6px;border-radius:50%;background:var(--ink-3)}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.fail{background:var(--fail)}.dot.info{background:var(--info)}
+.feed p{margin:0;font-size:13px}.feed small{color:var(--ink-3);font-size:12px}
+.quota{display:grid;gap:14px}
+.donut{display:flex;align-items:center;gap:16px}
+.donut svg{width:84px;height:84px;transform:rotate(-90deg)}
+.legend{display:grid;gap:6px;font-size:12.5px;color:var(--ink-2)}
+.legend span{display:flex;align-items:center;gap:8px}
+.legend i{width:8px;height:8px;border-radius:3px}
+
+/* 工作区 */
+.ws-head{display:flex;align-items:center;gap:14px;padding:18px 28px 0}
+.ws-title{display:flex;align-items:center;gap:12px}
+.ws-title h2{margin:0;font-size:20px;letter-spacing:-.02em}
+.ws-meta{display:flex;gap:18px;margin-left:8px;color:var(--ink-3);font:12px var(--font-mono)}
+.ws-meta span b{color:var(--ink-2);font-weight:500}
+.tabs{display:flex;gap:2px;padding:14px 28px 0;border-bottom:1px solid var(--line)}
+.tab{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;font-size:13.5px;color:var(--ink-3);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all var(--dur)}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink);border-color:var(--accent);font-weight:600}
+.tab[aria-selected="true"] svg{color:var(--accent)}
+.tab em{font-style:normal;font-size:11px;padding:0 6px;border-radius:99px;background:var(--surface-3);color:var(--ink-2)}
+.tp{display:none;padding:20px 28px 28px;animation:in 240ms var(--ease)}
+.tp.on{display:block}
+
+.term{border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--term)}
+.term-bar{display:flex;align-items:center;gap:10px;height:40px;padding:0 14px;background:var(--surface);border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink-2)}
+.lights{display:flex;gap:6px}.lights i{width:10px;height:10px;border-radius:50%;background:var(--surface-3)}
+.term-body{padding:16px 18px;font:13px/1.65 var(--font-mono);color:#cfd8e3;min-height:380px}
+.term-body .p{color:#8fd5bf}.term-body .c{color:#6b7785}.term-body .w{color:#f5b84b}.term-body .e{color:#ff6b61}.term-body .g{color:#3ddc97}.term-body .b{color:#6aa6ff}
+.cur{display:inline-block;width:8px;height:15px;vertical-align:-2px;background:#8fd5bf;animation:bl 1s steps(1) infinite}
+@keyframes bl{50%{opacity:0}}
+
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.path{display:flex;align-items:center;gap:4px;flex:1;min-width:200px;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface);font:12.5px var(--font-mono);color:var(--ink-2)}
+.path b{color:var(--ink);font-weight:500}
+.files{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th{padding:11px 16px;text-align:left;font-size:11.5px;font-weight:500;color:var(--ink-3);border-bottom:1px solid var(--line);background:var(--surface)}
+.table td{padding:10px 16px;border-bottom:1px solid var(--line);color:var(--ink-2)}
+.table tr:last-child td{border-bottom:0}
+.table tbody tr{cursor:pointer;transition:background var(--dur)}
+.table tbody tr:hover{background:var(--surface-2)}
+.table tr[aria-selected="true"]{background:var(--accent-soft)}
+.table tr[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.fn{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:500}
+.fn svg{color:var(--ink-3)}.fn svg.d{color:var(--info)}
+.mono-c{font:12px var(--font-mono)}
+.detail dl{margin:14px 0;display:grid;gap:10px}
+.detail dl div{display:flex;justify-content:space-between;font-size:12.5px}
+.detail dt{color:var(--ink-3)}.detail dd{margin:0;font-family:var(--font-mono);color:var(--ink-2)}
+.code{margin-top:12px;padding:12px;border-radius:var(--r-md);background:var(--term);font:11.5px/1.7 var(--font-mono);color:#aab6c4;border:1px solid var(--line)}
+.code .k{color:#6aa6ff}.code .s{color:#3ddc97}
+
+.logs{border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--term)}
+.log-row{display:grid;grid-template-columns:150px 54px 1fr;gap:12px;padding:5px 16px;font:12.5px/1.6 var(--font-mono);color:#b7c2cf}
+.log-row:hover{background:rgb(255 255 255 / 3%)}
+.log-row time{color:#5d6876}
+.lv{font-weight:600}.lv.i{color:#6aa6ff}.lv.w{color:#f5b84b}.lv.e{color:#ff6b61}
+.log-row.e{background:rgb(255 107 97 / 7%)}
+
+.ct-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.ct{padding:16px;display:grid;gap:12px}
+.ct-h{display:flex;align-items:center;gap:10px}
+.ct-h b{font-size:14px}.ct-h .pill{margin-left:auto}
+.ct small{color:var(--ink-3);font:11.5px var(--font-mono)}
+.ct-f{display:flex;gap:6px;padding-top:12px;border-top:1px solid var(--line)}
+
+/* 访问控制 */
+.two{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px}
+.cred{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:14px 0;border-top:1px solid var(--line)}
+.cred:first-child{border-top:0;padding-top:0}
+.cred .ic{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:var(--surface-2);color:var(--accent)}
+.cred b{display:block;font-size:13.5px}.cred small{color:var(--ink-3);font:11.5px var(--font-mono)}
+.policy{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--line);font-size:13px}
+.policy:first-of-type{border-top:0}
+.policy small{display:block;color:var(--ink-3);font-size:12px}
+.sw{position:relative;width:38px;height:22px;border-radius:99px;background:var(--surface-3);transition:background var(--dur);flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--ink-2);transition:all var(--dur) var(--ease)}
+.sw[aria-checked="true"]{background:var(--accent)}
+.sw[aria-checked="true"]::after{left:19px;background:var(--accent-ink)}
+
+/* 命令面板 */
+.scrim{position:fixed;inset:0;display:none;align-items:flex-start;justify-content:center;padding-top:14vh;background:rgb(0 0 0 / 50%);backdrop-filter:blur(4px);z-index:50}
+.scrim.on{display:flex}
+.cmd{width:min(560px,92vw);border:1px solid var(--line-2);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--shadow);overflow:hidden;animation:in 200ms var(--ease)}
+.cmd input{width:100%;height:54px;padding:0 18px;border:0;border-bottom:1px solid var(--line);background:none;outline:0;font-size:15px}
+.cmd ul{margin:0;padding:8px;list-style:none;max-height:320px;overflow:auto}
+.cmd li{display:flex;align-items:center;gap:12px;height:40px;padding:0 12px;border-radius:var(--r-md);color:var(--ink-2);font-size:13.5px;cursor:pointer}
+.cmd li:hover,.cmd li.a{background:var(--surface-2);color:var(--ink)}
+.cmd li small{margin-left:auto;color:var(--ink-3)}
+.cmd .grp{height:28px;font-size:11.5px;color:var(--ink-3);cursor:default}.cmd .grp:hover{background:none;color:var(--ink-3)}
+
+@media (max-width:1100px){.kpi{grid-column:span 6}.fleet,.side{grid-column:span 12}.ct-grid{grid-template-columns:repeat(2,1fr)}.two,.files{grid-template-columns:1fr}}
+@media (max-width:860px){.app{grid-template-columns:var(--rail-w) minmax(0,1fr)}.panel{display:none}.fleet-grid{grid-template-columns:1fr}.ct-grid{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="logo" viewBox="0 0 40 40"><rect x="3" y="3" width="34" height="34" rx="10" fill="currentColor" opacity=".14"/><path d="M10 14h20v10a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><circle cx="20" cy="22" r="3" fill="currentColor"/></symbol>
+  <g id="stroke" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></g>
+  <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5" rx="2"/><rect x="13.5" y="11" width="7.5" height="10" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7.5 10 3 2.5-3 2.5M13 15h4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 9 5-5 5 5M12 4v12"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 11 5 5 5-5M12 4v12"/></symbol>
+  <symbol id="i-log" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="4"/><path d="m11 11 9 9M17 17l2-2M14 14l2-2"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.7l1-1"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></symbol>
+</defs></svg>
+
+<div class="app">
+  <!-- 图标导轨 -->
+  <nav class="rail" aria-label="主导航">
+    <svg class="logo"><use href="#logo"/></svg>
+    <button class="rail-btn" data-go="overview" aria-current="page"><svg width="22" height="22"><use href="#i-home"/></svg><span class="tip">概览</span></button>
+    <button class="rail-btn" data-go="workspace"><svg width="22" height="22"><use href="#i-term"/></svg><span class="tip">工作区</span></button>
+    <button class="rail-btn" data-go="access"><svg width="22" height="22"><use href="#i-shield"/></svg><span class="tip">访问控制</span></button>
+    <span class="grow"></span>
+    <button class="rail-btn" id="theme" aria-label="切换主题"><svg width="21" height="21" id="theme-ic"><use href="#i-sun"/></svg><span class="tip">切换主题</span></button>
+    <div class="avatar" title="Owner">O</div>
+  </nav>
+
+  <!-- 主机面板 -->
+  <aside class="panel">
+    <div class="panel-head">
+      <div class="brand"><h1>Berth</h1><span>泊位 · 6 台服务器</span></div>
+      <button class="search" data-cmd><svg width="15" height="15"><use href="#i-search"/></svg><span>搜索主机或命令</span><kbd>Ctrl K</kbd></button>
+    </div>
+    <div class="seg" id="seg">
+      <button class="chip" aria-pressed="true">全部 6</button>
+      <button class="chip" aria-pressed="false">在线 4</button>
+      <button class="chip" aria-pressed="false">异常 2</button>
+    </div>
+    <div class="hosts" id="hosts"></div>
+    <button class="add-host"><svg width="14" height="14"><use href="#i-plus"/></svg>添加主机</button>
+    <div class="panel-foot"><svg width="14" height="14"><use href="#i-activity"/></svg>实时同步 · 3 秒前</div>
+  </aside>
+
+  <!-- 主区 -->
+  <section class="main">
+    <header class="topbar">
+      <div class="crumb"><span>Berth</span><span>/</span><b id="crumb">概览</b></div>
+      <span class="spacer"></span>
+      <span class="pill" data-t="ok">所有连接器正常</span>
+      <button class="icon-btn" aria-label="通知"><svg width="17" height="17"><use href="#i-bell"/></svg></button>
+      <button class="btn primary" data-go="workspace"><svg width="15" height="15"><use href="#i-term"/></svg>打开终端</button>
+    </header>
+
+    <div class="scroll">
+      <!-- 概览 -->
+      <div class="page on" id="p-overview">
+        <div class="page-head">
+          <div><h2>早上好,Owner</h2><p>6 台服务器中 4 台在线,需要关注 2 项。</p></div>
+          <span class="spacer"></span>
+          <button class="btn"><svg width="15" height="15"><use href="#i-activity"/></svg>刷新状态</button>
+        </div>
+
+        <div class="bento">
+          <div class="card kpi"><label><svg width="15" height="15"><use href="#i-server"/></svg>在线主机</label><div class="v num">4<em>/ 6</em></div><div class="d">较昨日 无变化</div>
+            <svg class="spark" viewBox="0 0 84 34" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 24 14 20 26 22 38 12 50 16 62 8 82 10"/></svg></div>
+          <div class="card kpi"><label><svg width="15" height="15"><use href="#i-cpu"/></svg>平均 CPU</label><div class="v num">37<em>%</em></div><div class="d up">↓ 5% 较 1 小时前</div>
+            <svg class="spark" viewBox="0 0 84 34" fill="none" stroke="var(--info)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10 14 14 26 8 38 20 50 18 62 24 82 22"/></svg></div>
+          <div class="card kpi"><label><svg width="15" height="15"><use href="#i-box"/></svg>运行容器</label><div class="v num">23</div><div class="d">3 个已停止</div></div>
+          <div class="card kpi" data-t="warn"><label><svg width="15" height="15"><use href="#i-alert"/></svg>需要关注</label><div class="v num">2</div><div class="d">磁盘 91% · 1 台离线</div></div>
+
+          <div class="card fleet">
+            <div class="card-h"><h3>服务器</h3><small>点击进入工作区</small><span class="spacer"></span><button class="btn sm"><svg width="13" height="13"><use href="#i-plus"/></svg>添加</button></div>
+            <div class="card-b"><div class="fleet-grid" id="fleet"></div></div>
+          </div>
+
+          <div class="side">
+            <div class="card">
+              <div class="card-h"><h3>最近操作</h3><span class="spacer"></span><small>全部 →</small></div>
+              <div class="card-b"><ul class="feed">
+                <li><span class="dot ok"></span><div><p>owner 登录 <b class="mono">tokyo-edge-01</b></p><small>SSH · 密钥认证</small></div><small>2 分钟前</small></li>
+                <li><span class="dot info"></span><div><p>编辑 <b class="mono">nginx.conf</b></p><small>tokyo-edge-01</small></div><small>14 分钟前</small></li>
+                <li><span class="dot warn"></span><div><p>磁盘使用率达到 91%</p><small>sg-db-02</small></div><small>41 分钟前</small></li>
+                <li><span class="dot fail"></span><div><p>连接失败(超时)</p><small>fra-backup-01</small></div><small>1 小时前</small></li>
+              </ul></div>
+            </div>
+            <div class="card">
+              <div class="card-h"><h3>资源分布</h3></div>
+              <div class="card-b quota"><div class="donut">
+                <svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="14" fill="none" stroke="var(--surface-3)" stroke-width="5"/><circle cx="18" cy="18" r="14" fill="none" stroke="var(--accent)" stroke-width="5" stroke-dasharray="44 88" stroke-linecap="round"/><circle cx="18" cy="18" r="14" fill="none" stroke="var(--info)" stroke-width="5" stroke-dasharray="26 88" stroke-dashoffset="-48" stroke-linecap="round"/></svg>
+                <div class="legend"><span><i style="background:var(--accent)"></i>Web 服务 · 50%</span><span><i style="background:var(--info)"></i>数据库 · 30%</span><span><i style="background:var(--surface-3)"></i>其他 · 20%</span></div>
+              </div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 工作区 -->
+      <div class="page on" id="p-workspace" style="padding:0;max-width:none;display:none">
+        <div class="ws-head">
+          <div class="ws-title"><div class="berth-ic" style="width:40px;height:40px"><svg width="20" height="20"><use href="#i-server"/></svg><i data-s="online" style="border-color:var(--bg)"></i></div>
+            <div><h2 id="ws-name">tokyo-edge-01</h2></div><span class="pill" data-t="ok">在线</span></div>
+          <div class="ws-meta"><span>host <b id="ws-host">203.0.113.24</b></span><span>user <b>deploy</b></span><span>延迟 <b>18ms</b></span></div>
+          <span class="spacer"></span>
+          <button class="btn sm"><svg width="13" height="13"><use href="#i-link"/></svg>复制连接</button>
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" aria-selected="true" data-tab="term"><svg width="16" height="16"><use href="#i-term"/></svg>终端</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="files"><svg width="16" height="16"><use href="#i-folder"/></svg>文件</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="logs"><svg width="16" height="16"><use href="#i-log"/></svg>日志<em>3</em></button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="ct"><svg width="16" height="16"><use href="#i-box"/></svg>容器<em>6</em></button>
+        </div>
+
+        <div class="tp on" id="t-term">
+          <div class="term">
+            <div class="term-bar"><span class="lights"><i></i><i></i><i></i></span><span class="mono">deploy@tokyo-edge-01: ~</span><span class="spacer"></span><span class="pill plain" style="background:var(--surface-2)">bash · 120×32</span></div>
+<div class="term-body"><span class="c"># 已连接 · Ubuntu 24.04.1 LTS</span>
+<span class="p">deploy@tokyo-edge-01</span>:<span class="b">~</span>$ uptime
+ 21:29:02 up 42 days,  3:11,  1 user,  load average: 0.31, 0.27, 0.22
+<span class="p">deploy@tokyo-edge-01</span>:<span class="b">~</span>$ docker ps --format "table {{.Names}}\t{{.Status}}"
+NAMES          STATUS
+nginx          <span class="g">Up 3 days</span>
+api            <span class="g">Up 3 days (healthy)</span>
+redis          <span class="g">Up 12 days</span>
+worker         <span class="w">Restarting (1) 8 seconds ago</span>
+<span class="p">deploy@tokyo-edge-01</span>:<span class="b">~</span>$ sudo nginx -t
+nginx: configuration file /etc/nginx/nginx.conf test <span class="g">is successful</span>
+<span class="p">deploy@tokyo-edge-01</span>:<span class="b">~</span>$ <span class="cur"></span></div>
+          </div>
+        </div>
+
+        <div class="tp" id="t-files">
+          <div class="toolbar">
+            <button class="btn sm"><svg width="14" height="14"><use href="#i-folder"/></svg>新建文件夹</button>
+            <button class="btn sm"><svg width="14" height="14"><use href="#i-file"/></svg>新建文件</button>
+            <button class="btn sm"><svg width="14" height="14"><use href="#i-upload"/></svg>上传</button>
+            <div class="path"><span>/</span><b>etc</b><span>/</span><b>nginx</b></div>
+            <button class="btn sm"><svg width="14" height="14"><use href="#i-download"/></svg>下载</button>
+          </div>
+          <div class="files">
+            <div class="card"><table class="table">
+              <thead><tr><th>名称</th><th>大小</th><th>修改时间</th><th>权限</th></tr></thead>
+              <tbody>
+                <tr><td><span class="fn"><svg class="d" width="16" height="16"><use href="#i-folder"/></svg>sites-enabled</span></td><td>—</td><td class="mono-c">11-02 09:14</td><td class="mono-c">rwxr-xr-x</td></tr>
+                <tr><td><span class="fn"><svg class="d" width="16" height="16"><use href="#i-folder"/></svg>conf.d</span></td><td>—</td><td class="mono-c">10-28 17:02</td><td class="mono-c">rwxr-xr-x</td></tr>
+                <tr aria-selected="true"><td><span class="fn"><svg width="16" height="16"><use href="#i-file"/></svg>nginx.conf</span></td><td>1.4 KB</td><td class="mono-c">11-15 22:41</td><td class="mono-c">rw-r--r--</td></tr>
+                <tr><td><span class="fn"><svg width="16" height="16"><use href="#i-file"/></svg>mime.types</span></td><td>5.9 KB</td><td class="mono-c">08-03 11:20</td><td class="mono-c">rw-r--r--</td></tr>
+                <tr><td><span class="fn"><svg width="16" height="16"><use href="#i-file"/></svg>fastcgi_params</span></td><td>1.1 KB</td><td class="mono-c">08-03 11:20</td><td class="mono-c">rw-r--r--</td></tr>
+              </tbody></table></div>
+            <aside class="card detail"><div class="card-b">
+              <div style="display:flex;align-items:center;gap:10px"><svg width="18" height="18" style="color:var(--ink-3)"><use href="#i-file"/></svg><b>nginx.conf</b></div>
+              <dl><div><dt>大小</dt><dd>1.4 KB</dd></div><div><dt>权限</dt><dd>rw-r--r--</dd></div><div><dt>所有者</dt><dd>root:root</dd></div></dl>
+              <div style="display:flex;gap:6px"><button class="btn sm primary">编辑</button><button class="btn sm">重命名</button><button class="btn sm danger">删除</button></div>
+              <div class="code"><span class="k">worker_processes</span> auto;<br><span class="k">events</span> { <span class="k">worker_connections</span> 1024; }<br><span class="k">http</span> {<br>&nbsp;&nbsp;<span class="k">include</span> <span class="s">mime.types</span>;<br>&nbsp;&nbsp;<span class="k">sendfile</span> on;<br>}</div>
+            </div></aside>
+          </div>
+        </div>
+
+        <div class="tp" id="t-logs">
+          <div class="toolbar"><button class="chip" aria-pressed="true">全部</button><button class="chip" aria-pressed="false">WARN</button><button class="chip" aria-pressed="false">ERROR</button>
+            <div class="path" style="margin-left:6px"><svg width="14" height="14"><use href="#i-search"/></svg>&nbsp;过滤日志…</div><span class="pill" data-t="ok">实时</span></div>
+          <div class="logs">
+            <div class="log-row"><time>21:28:41.102</time><span class="lv i">INFO</span><span>nginx: GET /api/health 200 3ms</span></div>
+            <div class="log-row"><time>21:28:44.380</time><span class="lv i">INFO</span><span>api: connected to redis://redis:6379</span></div>
+            <div class="log-row"><time>21:28:51.007</time><span class="lv w">WARN</span><span>worker: queue depth 214 exceeds soft limit 200</span></div>
+            <div class="log-row e"><time>21:28:58.664</time><span class="lv e">ERROR</span><span>worker: ECONNRESET while calling upstream payments:8443</span></div>
+            <div class="log-row"><time>21:29:02.219</time><span class="lv i">INFO</span><span>worker: restarting (attempt 1)</span></div>
+            <div class="log-row"><time>21:29:06.501</time><span class="lv i">INFO</span><span>nginx: GET /static/app.css 304 1ms</span></div>
+          </div>
+        </div>
+
+        <div class="tp" id="t-ct">
+          <div class="ct-grid" id="cts"></div>
+        </div>
+      </div>
+
+      <!-- 访问控制 -->
+      <div class="page" id="p-access">
+        <div class="page-head"><div><h2>访问控制</h2><p>管理凭据与连接策略,仅 Owner 可修改。</p></div><span class="spacer"></span><button class="btn primary"><svg width="15" height="15"><use href="#i-plus"/></svg>添加凭据</button></div>
+        <div class="two">
+          <div class="card"><div class="card-h"><h3>凭据</h3><small>3 个</small></div><div class="card-b">
+            <div class="cred"><span class="ic"><svg width="18" height="18"><use href="#i-key"/></svg></span><div><b>deploy-ed25519</b><small>SHA256:q3Zx…8mPw · 绑定 4 台主机</small></div><span class="pill" data-t="ok">启用</span></div>
+            <div class="cred"><span class="ic"><svg width="18" height="18"><use href="#i-key"/></svg></span><div><b>db-admin-rsa</b><small>SHA256:Lw0e…k2Hd · 绑定 1 台主机</small></div><span class="pill" data-t="ok">启用</span></div>
+            <div class="cred"><span class="ic"><svg width="18" height="18"><use href="#i-key"/></svg></span><div><b>legacy-password</b><small>密码认证 · 最后使用 47 天前</small></div><span class="pill" data-t="warn">建议停用</span></div>
+          </div></div>
+          <div class="card"><div class="card-h"><h3>连接策略</h3></div><div class="card-b">
+            <div class="policy"><div>强制密钥认证<small>禁用密码登录</small></div><button class="sw" role="switch" aria-checked="true"></button></div>
+            <div class="policy"><div>危险命令二次确认<small>rm -rf、dd、mkfs 等</small></div><button class="sw" role="switch" aria-checked="true"></button></div>
+            <div class="policy"><div>会话审计录制<small>保留 30 天</small></div><button class="sw" role="switch" aria-checked="false"></button></div>
+            <div class="policy"><div>空闲 15 分钟自动断开<small>终端会话</small></div><button class="sw" role="switch" aria-checked="true"></button></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 命令面板 -->
+<div class="scrim" id="scrim"><div class="cmd" role="dialog" aria-label="命令面板">
+  <input id="cmd-in" placeholder="输入主机名或命令…" />
+  <ul id="cmd-list"></ul>
+</div></div>
+
+<script>
+const hosts=[
+ {n:'tokyo-edge-01',ip:'203.0.113.24',s:'online',lat:'18ms',cpu:34,mem:52,disk:61},
+ {n:'sg-db-02',ip:'198.51.100.7',s:'online',lat:'42ms',cpu:58,mem:74,disk:91},
+ {n:'hk-gateway',ip:'192.0.2.88',s:'online',lat:'26ms',cpu:21,mem:38,disk:44},
+ {n:'us-west-app',ip:'198.51.100.133',s:'online',lat:'148ms',cpu:47,mem:61,disk:57},
+ {n:'fra-backup-01',ip:'203.0.113.190',s:'error',lat:'—',cpu:0,mem:0,disk:0},
+ {n:'lab-nas',ip:'10.0.0.12',s:'offline',lat:'—',cpu:0,mem:0,disk:0}];
+const lbl={online:'在线',error:'异常',offline:'离线'},tone={online:'ok',error:'fail',offline:''};
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+let cur=0;
+const svg=(id,w=18)=>`<svg width="${w}" height="${w}"><use href="#${id}"/></svg>`;
+
+function renderHosts(){
+  $('#hosts').innerHTML=hosts.map((h,i)=>`<button class="host" data-i="${i}" aria-current="${i===cur}">
+    <span class="berth-ic">${svg('i-server',17)}<i data-s="${h.s}"></i></span>
+    <span><b>${h.n}</b><small>${h.ip}</small></span><span class="lat num">${h.lat}</span></button>`).join('');
+}
+const barCls=v=>v>=90?'f':v>=75?'w':'';
+function renderFleet(){
+  $('#fleet').innerHTML=hosts.map((h,i)=>{
+    const m=h.s==='online'?['CPU','内存','磁盘'].map((k,j)=>{const v=[h.cpu,h.mem,h.disk][j];return `<div class="m-row"><span>${k}</span><div class="bar"><i class="${barCls(v)}" style="width:${v}%"></i></div><span class="num">${v}%</span></div>`}).join(''):`<div style="font-size:12.5px;color:var(--ink-3);padding:6px 0">${h.s==='error'?'连接超时,请检查网络或凭据':'主机已离线'}</div>`;
+    return `<button class="hc" data-i="${i}"><div class="hc-top"><span class="berth-ic" style="width:30px;height:30px">${svg('i-server',15)}</span><b>${h.n}</b><span class="pill" ${tone[h.s]?`data-t="${tone[h.s]}"`:''}>${lbl[h.s]}</span></div><small>${h.ip}</small><div class="meter">${m}</div></button>`}).join('');
+}
+const cts=[['nginx','nginx:1.27','ok','运行中',3],['api','berth/api:0.1.0','ok','健康',3],['redis','redis:7-alpine','ok','运行中',12],['worker','berth/worker:0.1.0','warn','重启中',0],['postgres','postgres:16','ok','运行中',20],['cron','alpine:3.20','','已停止',0]];
+$('#cts').innerHTML=cts.map(c=>`<div class="card ct"><div class="ct-h"><span class="berth-ic">${svg('i-box',17)}</span><b>${c[0]}</b><span class="pill" ${c[2]?`data-t="${c[2]}"`:''}>${c[3]}</span></div><small>${c[1]}</small><div class="ct-f"><button class="btn sm">日志</button><button class="btn sm">重启</button><button class="btn sm danger">停止</button></div></div>`).join('');
+
+function selectHost(i){cur=i;const h=hosts[i];renderHosts();$('#ws-name').textContent=h.n;$('#ws-host').textContent=h.ip}
+function go(p){
+  $$('.page').forEach(e=>{e.classList.toggle('on',e.id==='p-'+p);e.style.display=''});
+  $$('.rail-btn[data-go]').forEach(b=>b.setAttribute('aria-current',b.dataset.go===p?'page':'false'));
+  $('#crumb').textContent={overview:'概览',workspace:'工作区 · '+hosts[cur].n,access:'访问控制'}[p];
+  closeCmd();
+}
+document.addEventListener('click',e=>{
+  const g=e.target.closest('[data-go]');if(g){go(g.dataset.go);return}
+  const h=e.target.closest('.host,.hc');if(h){selectHost(+h.dataset.i);go('workspace');return}
+  const t=e.target.closest('.tab');if(t){$$('.tab').forEach(x=>x.setAttribute('aria-selected',x===t));$$('.tp').forEach(x=>x.classList.toggle('on',x.id==='t-'+t.dataset.tab))}
+  const c=e.target.closest('.chip');if(c){$$('.chip',c.parentElement).forEach(x=>x.setAttribute('aria-pressed',x===c))}
+  const sw=e.target.closest('.sw');if(sw)sw.setAttribute('aria-checked',sw.getAttribute('aria-checked')!=='true');
+  const r=e.target.closest('.table tbody tr');if(r){$$('.table tbody tr').forEach(x=>x.removeAttribute('aria-selected'));r.setAttribute('aria-selected','true')}
+  if(e.target.closest('[data-cmd]'))openCmd();
+  if(e.target===$('#scrim'))closeCmd();
+});
+$('#theme').onclick=()=>{const d=document.documentElement,n=d.dataset.theme==='dark'?'light':'dark';d.dataset.theme=n;$('#theme-ic use').setAttribute('href',n==='dark'?'#i-sun':'#i-moon')};
+
+/* 命令面板 */
+function openCmd(){$('#scrim').classList.add('on');renderCmd('');$('#cmd-in').value='';$('#cmd-in').focus()}
+function closeCmd(){$('#scrim').classList.remove('on')}
+function renderCmd(q){
+  q=q.toLowerCase();
+  const hs=hosts.map((h,i)=>({h,i})).filter(x=>x.h.n.includes(q)||x.h.ip.includes(q));
+  const acts=[['概览','overview'],['工作区','workspace'],['访问控制','access']].filter(a=>a[0].includes(q));
+  $('#cmd-list').innerHTML=(hs.length?`<li class="grp">主机</li>`+hs.map(x=>`<li data-h="${x.i}">${svg('i-server',16)}${x.h.n}<small class="mono">${x.h.ip}</small></li>`).join(''):'')+
+    (acts.length?`<li class="grp">页面</li>`+acts.map(a=>`<li data-go="${a[1]}">${svg('i-home',16)}${a[0]}</li>`).join(''):'')||'<li class="grp">无匹配结果</li>';
+}
+$('#cmd-in').oninput=e=>renderCmd(e.target.value);
+$('#cmd-list').onclick=e=>{const l=e.target.closest('[data-h]');if(l){selectHost(+l.dataset.h);go('workspace')}};
+addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openCmd()}if(e.key==='Escape')closeCmd()});
+
+renderHosts();renderFleet();$('#p-workspace').classList.remove('on');
+</script>
+</body>
+</html>
+

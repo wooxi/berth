@@ -19,7 +19,11 @@ import {
   X,
 } from 'lucide-react'
 import { api, type FileEntry, type FilePreview, type HostSnapshot } from '../../api'
-import { Toolbar } from '../../components/Toolbar'
+import { EmptyState, Toolbar, ToolbarSep } from '@/components/common'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
 
 function formatSize(size: number): string {
   if (size < 1024) return `${size} B`
@@ -185,88 +189,63 @@ export function FilesTab({ host, notify }: { host: HostSnapshot; notify: (messag
   const parent = `/${segments.slice(0, -1).join('/')}`
   const isDir = selected?.type === 'directory'
 
+
   return (
     <>
       <Toolbar info={`${entries.length} 项${dirty ? ' · 未保存' : ''}`}>
-        <div className="toolbar-group">
-          <button className="button button-secondary compact-button" type="button" onClick={() => void load(parent)} disabled={path === '/'}>
-            <ArrowUp size={14} aria-hidden="true" />上级
-          </button>
-          <button className="icon-button" type="button" aria-label="刷新目录" onClick={() => void load(path)} disabled={loading}>
-            <RefreshCw size={15} aria-hidden="true" className={loading ? 'spin' : ''} />
-          </button>
-        </div>
+        <Button variant="secondary" size="sm" onClick={() => void load(parent)} disabled={path === '/'}><ArrowUp />上级</Button>
+        <Button variant="ghost" size="icon" aria-label="刷新目录" onClick={() => void load(path)} disabled={loading}>
+          <RefreshCw className={loading ? 'spin' : ''} />
+        </Button>
 
-        <span className="toolbar-sep" aria-hidden="true" />
+        <ToolbarSep />
+        <Button variant="secondary" size="sm" onClick={() => startAction('mkdir')}><FolderPlus />新建文件夹</Button>
+        <Button variant="secondary" size="sm" onClick={() => startAction('newfile')}><FilePlus2 />新建文件</Button>
+        <Button variant="secondary" size="sm" onClick={() => uploadRef.current?.click()}><Upload />上传</Button>
+        <input
+          ref={uploadRef}
+          type="file"
+          className="sr-only"
+          aria-label="选择要上传的文件"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0]
+            if (file) void upload(file)
+            event.currentTarget.value = ''
+          }}
+        />
 
-        <div className="toolbar-group">
-          <button className="button button-secondary compact-button" type="button" onClick={() => startAction('mkdir')}>
-            <FolderPlus size={14} aria-hidden="true" />新建文件夹
-          </button>
-          <button className="button button-secondary compact-button" type="button" onClick={() => startAction('newfile')}>
-            <FilePlus2 size={14} aria-hidden="true" />新建文件
-          </button>
-          <button className="button button-secondary compact-button" type="button" onClick={() => uploadRef.current?.click()}>
-            <Upload size={14} aria-hidden="true" />上传
-          </button>
-          <input
-            ref={uploadRef}
-            type="file"
-            className="sr-only"
-            aria-label="选择要上传的文件"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0]
-              if (file) void upload(file)
-              event.currentTarget.value = ''
-            }}
-          />
-        </div>
-
-        <span className="toolbar-sep" aria-hidden="true" />
-
-        <div className="toolbar-group">
+        <ToolbarSep />
+        <Button variant="secondary" size="sm" asChild aria-disabled={!selected || isDir}>
           <a
-            className={`button button-secondary compact-button${!selected || isDir ? ' is-disabled' : ''}`}
             href={selected && !isDir ? api.downloadUrl(host.hostId, selected.path) : undefined}
-            aria-disabled={!selected || isDir}
             download
             onClick={(event) => { if (!selected || isDir) event.preventDefault() }}
           >
-            <Download size={14} aria-hidden="true" />下载
+            <Download />下载
           </a>
-          <button
-            className="button button-danger compact-button"
-            type="button"
-            disabled={!selected}
-            onClick={() => startAction('delete')}
-          >
-            <Trash2 size={14} aria-hidden="true" />删除
-          </button>
-        </div>
+        </Button>
+        <Button variant="destructive" size="sm" disabled={!selected} onClick={() => startAction('delete')}><Trash2 />删除</Button>
 
-        <span className="toolbar-sep" aria-hidden="true" />
-
-        <div className="toolbar-group path-group">
-          <HardDrive size={14} aria-hidden="true" className="path-icon" />
-          <nav className="crumbs" aria-label="当前路径">
-            <button type="button" onClick={() => void load('/')}>/</button>
-            {segments.map((segment, index) => (
-              <span className="crumb" key={`${segment}-${index}`}>
-                <ChevronRight size={11} aria-hidden="true" />
-                <button type="button" onClick={() => void load(`/${segments.slice(0, index + 1).join('/')}`)}>{segment}</button>
-              </span>
-            ))}
-          </nav>
-        </div>
+        <ToolbarSep />
+        <HardDrive className="size-4 text-muted-foreground" aria-hidden="true" />
+        <nav className="flex min-w-0 items-center gap-0.5 font-mono text-[13px]" aria-label="当前路径">
+          <button type="button" className="rounded px-1.5 py-0.5 hover:bg-muted" onClick={() => void load('/')}>/</button>
+          {segments.map((segment, index) => (
+            <span className="flex items-center" key={`${segment}-${index}`}>
+              <ChevronRight className="size-3 text-muted-foreground" aria-hidden="true" />
+              <button type="button" className="rounded px-1.5 py-0.5 hover:bg-muted" onClick={() => void load(`/${segments.slice(0, index + 1).join('/')}`)}>{segment}</button>
+            </span>
+          ))}
+        </nav>
       </Toolbar>
 
       {pending && (
-        <form className="file-action-bar" onSubmit={(event) => { event.preventDefault(); void runPending() }}>
-          <span className="file-action-label">{ACTION_LABEL[pending.kind]}{selected && pending.kind !== 'mkdir' && pending.kind !== 'newfile' ? ` ${selected.name}` : ''}</span>
+        <form className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-muted/50 px-5 py-2.5" onSubmit={(event) => { event.preventDefault(); void runPending() }}>
+          <span className="text-[13px] font-medium">{ACTION_LABEL[pending.kind]}{selected && pending.kind !== 'mkdir' && pending.kind !== 'newfile' ? ` ${selected.name}` : ''}</span>
 
           {pending.kind !== 'delete' && (
-            <input
-              className="file-action-input"
+            <Input
+              className="h-8 max-w-md flex-1 font-mono"
               value={pending.value}
               onChange={(event) => setPending({ ...pending, value: event.currentTarget.value })}
               placeholder={pending.kind === 'copy' || pending.kind === 'move' ? '目标绝对路径' : pending.kind === 'chmod' ? '755' : '名称'}
@@ -278,117 +257,106 @@ export function FilesTab({ host, notify }: { host: HostSnapshot; notify: (messag
 
           {pending.kind === 'delete' && (
             <>
-              <span className="file-action-warn">不可撤销</span>
+              <span className="text-[13px] text-destructive">不可撤销</span>
               {isDir && (
-                <label className="file-action-check">
-                  <input
-                    type="checkbox"
-                    checked={pending.recursive === true}
-                    onChange={(event) => setPending({ ...pending, recursive: event.currentTarget.checked })}
-                  />
+                <label className="flex items-center gap-2 text-[13px]">
+                  <input type="checkbox" checked={pending.recursive === true} onChange={(event) => setPending({ ...pending, recursive: event.currentTarget.checked })} />
                   递归删除目录及内容
                 </label>
               )}
             </>
           )}
 
-          <button
-            className={`button compact-button ${pending.kind === 'delete' ? 'button-danger' : 'button-primary'}`}
-            type="submit"
-            disabled={busy || (pending.kind !== 'delete' && !pending.value.trim())}
-          >
+          <Button variant={pending.kind === 'delete' ? 'destructive' : 'default'} size="sm" type="submit" disabled={busy || (pending.kind !== 'delete' && !pending.value.trim())}>
             {pending.kind === 'delete' ? '确认删除' : '确定'}
-          </button>
-          <button className="button button-quiet compact-button" type="button" onClick={() => setPending(null)}>取消</button>
+          </Button>
+          <Button variant="ghost" size="sm" type="button" onClick={() => setPending(null)}>取消</Button>
         </form>
       )}
 
-      <div className="files-wrap">
-        <div className="file-list" role="region" aria-label="文件列表" tabIndex={0}>
-          <div className="file-head" aria-hidden="true">
-            <span>名称</span><span>大小</span><span>修改时间</span><span>权限</span>
-          </div>
-
-          {entries.map((entry) => (
-            <button
-              key={entry.path}
-              type="button"
-              className="file-row"
-              aria-selected={selected?.path === entry.path}
-              onClick={() => void openEntry(entry)}
-            >
-              <span className="fname">
-                {entry.type === 'directory'
-                  ? <Folder size={14} className="file-icon-dir" aria-hidden="true" />
-                  : <FileText size={14} className="file-icon-file" aria-hidden="true" />}
-                <span>{entry.name}</span>
-              </span>
-              <span className="fmeta">{entry.type === 'file' ? formatSize(entry.size) : '—'}</span>
-              <span className="fmeta">{entry.modified}</span>
-              <span className="fmeta">{entry.mode}</span>
-            </button>
-          ))}
-
-          {!loading && entries.length === 0 && (
-            <div className="term-empty" style={{ minBlockSize: 160 }}>
-              <Folder size={20} aria-hidden="true" />
-              <span>{error || '目录为空'}</span>
-            </div>
-          )}
+      <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(380px,34%)]">
+        <div className="min-h-0 overflow-auto" role="region" aria-label="文件列表" tabIndex={0}>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="px-5">名称</TableHead>
+                <TableHead>大小</TableHead>
+                <TableHead>修改时间</TableHead>
+                <TableHead>权限</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries.map((entry) => (
+                <TableRow
+                  key={entry.path}
+                  tabIndex={0}
+                  aria-selected={selected?.path === entry.path}
+                  className="cursor-pointer"
+                  onClick={() => void openEntry(entry)}
+                  onKeyDown={(event) => { if (event.key === 'Enter') void openEntry(entry) }}
+                >
+                  <TableCell className="px-5">
+                    <span className="flex items-center gap-2.5 font-medium">
+                      {entry.type === 'directory'
+                        ? <Folder className="size-4 text-primary" aria-hidden="true" />
+                        : <FileText className="size-4 text-muted-foreground" aria-hidden="true" />}
+                      {entry.name}
+                    </span>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{entry.type === 'file' ? formatSize(entry.size) : '—'}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{entry.modified}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{entry.mode}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {!loading && entries.length === 0 && <EmptyState icon={Folder} className="min-h-40">{error || '目录为空'}</EmptyState>}
         </div>
 
-        <aside className="file-detail" aria-label="文件详情">
-          {!selected && (
-            <div className="term-empty" style={{ minBlockSize: 200 }}>
-              <FileText size={20} aria-hidden="true" />
-              <span>选择左侧文件查看内容</span>
-            </div>
-          )}
+        <aside className="flex min-h-0 flex-col border-t border-border bg-card/40 xl:border-t-0 xl:border-l" aria-label="文件详情">
+          {!selected && <EmptyState icon={FileText}>选择左侧文件查看内容</EmptyState>}
 
           {selected && (
-            <>
-              <div className="file-detail-head">
-                <h3 title={selected.name}>{selected.name}</h3>
-                <button className="icon-button" type="button" aria-label="关闭预览" onClick={() => { setSelected(null); setPreview(null); setDraft(null) }}>
-                  <X size={14} aria-hidden="true" />
-                </button>
+            <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+              <div className="flex items-center gap-2">
+                <h3 className="min-w-0 flex-1 truncate text-sm font-semibold" title={selected.name}>{selected.name}</h3>
+                <Button variant="ghost" size="icon" aria-label="关闭预览" onClick={() => { setSelected(null); setPreview(null); setDraft(null) }}><X /></Button>
               </div>
 
-              <dl>
-                <div><dt>大小</dt><dd>{selected.type === 'file' ? formatSize(selected.size) : '目录'}</dd></div>
-                <div><dt>权限</dt><dd>{selected.mode}</dd></div>
-                <div><dt>所有者</dt><dd>{selected.owner}</dd></div>
-                <div><dt>修改</dt><dd>{selected.modified}</dd></div>
+              <dl className="grid grid-cols-2 gap-2 text-xs">
+                {[
+                  ['大小', selected.type === 'file' ? formatSize(selected.size) : '目录'],
+                  ['权限', selected.mode],
+                  ['所有者', selected.owner],
+                  ['修改', selected.modified],
+                ].map(([k, v]) => (
+                  <div key={k} className="rounded-md bg-muted/60 px-2.5 py-1.5">
+                    <dt className="text-muted-foreground">{k}</dt>
+                    <dd className="truncate font-mono font-medium">{v}</dd>
+                  </div>
+                ))}
               </dl>
 
-              <div className="file-detail-actions">
-                <button className="button button-secondary compact-button" type="button" onClick={() => startAction('rename')}>
-                  <PencilLine size={13} aria-hidden="true" />重命名
-                </button>
-                <button className="button button-secondary compact-button" type="button" onClick={() => startAction('copy')}>
-                  <Copy size={13} aria-hidden="true" />复制
-                </button>
-                <button className="button button-secondary compact-button" type="button" onClick={() => startAction('move')}>
-                  <Scissors size={13} aria-hidden="true" />移动
-                </button>
-                <button className="button button-secondary compact-button" type="button" onClick={() => startAction('chmod')}>
-                  <KeyRound size={13} aria-hidden="true" />权限
-                </button>
+              <div className="grid grid-cols-4 gap-1.5">
+                <Button variant="secondary" size="xs" onClick={() => startAction('rename')}><PencilLine />重命名</Button>
+                <Button variant="secondary" size="xs" onClick={() => startAction('copy')}><Copy />复制</Button>
+                <Button variant="secondary" size="xs" onClick={() => startAction('move')}><Scissors />移动</Button>
+                <Button variant="secondary" size="xs" onClick={() => startAction('chmod')}><KeyRound />权限</Button>
               </div>
 
-              {busy && <p className="file-detail-hint">读取中…</p>}
+              {busy && <p className="text-xs text-muted-foreground">读取中…</p>}
 
               {preview?.binary && (
-                <p className="note" style={{ marginBlockStart: 0 }}>
-                  <FileText size={13} aria-hidden="true" />
-                  <span>二进制文件，不支持在线预览，可用工具栏下载。</span>
+                <p className="flex items-start gap-2 rounded-md bg-muted/60 p-3 text-xs text-muted-foreground">
+                  <FileText className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  二进制文件，不支持在线预览，可用工具栏下载。
                 </p>
               )}
 
               {draft !== null && (
                 <>
                   <textarea
-                    className="file-editor"
+                    className="min-h-48 w-full flex-1 resize-none rounded-lg border border-input bg-term p-3 font-mono text-[12.5px] leading-relaxed text-zinc-200 outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                     value={draft}
                     onChange={(event) => setDraft(event.currentTarget.value)}
                     onKeyDown={(event) => {
@@ -400,19 +368,17 @@ export function FilesTab({ host, notify }: { host: HostSnapshot; notify: (messag
                     spellCheck={false}
                     aria-label={`${selected.name} 内容`}
                   />
-                  <div className="file-editor-foot">
-                    <span className="file-detail-hint">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={cn('text-xs', dirty ? 'text-warning' : 'text-muted-foreground')}>
                       {preview?.truncated ? '已截断，仅显示前 512KB' : dirty ? '未保存' : '已同步'}
                     </span>
-                    <button className="button button-primary compact-button" type="button" onClick={() => void save()} disabled={!dirty || busy}>
-                      <Save size={13} aria-hidden="true" />保存
-                    </button>
+                    <Button size="sm" onClick={() => void save()} disabled={!dirty || busy}><Save />保存</Button>
                   </div>
                 </>
               )}
 
-              {error && <p className="form-error" role="alert">{error}</p>}
-            </>
+              {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+            </div>
           )}
         </aside>
       </div>

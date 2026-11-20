@@ -68,6 +68,30 @@ export type FileOpResult = { ok: true }
 
 export type ApiError = { error: string }
 
+export type HostDraft = {
+  id: string
+  label: string
+  address: string
+  port: number
+  username: string
+  fingerprint: string
+  group: string
+  role: string
+  runtime: 'docker' | 'podman' | 'none'
+  systemd: boolean
+  enabled: boolean
+}
+
+export type HostRegistration = HostDraft
+
+export class ValidationError extends Error {
+  issues: { field: string; message: string }[]
+  constructor(error: string, issues: { field: string; message: string }[]) {
+    super(error)
+    this.issues = issues
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: 'same-origin',
@@ -77,6 +101,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const payload = await response.json().catch(() => ({ error: 'invalid response' })) as T | ApiError
   if (!response.ok) {
     const message = typeof payload === 'object' && payload !== null && 'error' in payload ? payload.error : `HTTP ${response.status}`
+    const issues = typeof payload === 'object' && payload !== null && 'issues' in payload
+      ? (payload as { issues?: { field: string; message: string }[] }).issues
+      : undefined
+    if (issues && issues.length > 0) throw new ValidationError(message, issues)
     throw new Error(message)
   }
   return payload as T
@@ -91,6 +119,14 @@ export const api = {
   },
   getSession: () => request<{ authenticated: boolean; subjectId?: string; expiresAt?: number }>('/api/session'),
   getHosts: () => request<{ hosts: HostSnapshot[] }>('/api/hosts'),
+  getHostConfig: (hostId: string) =>
+    request<{ host: HostRegistration }>(`/api/hosts/${encodeURIComponent(hostId)}/config`),
+  createHost: (draft: HostDraft) =>
+    request<{ host: HostRegistration }>('/api/hosts', { method: 'POST', body: JSON.stringify(draft) }),
+  updateHost: (hostId: string, draft: HostDraft) =>
+    request<{ host: HostRegistration }>(`/api/hosts/${encodeURIComponent(hostId)}`, { method: 'PUT', body: JSON.stringify(draft) }),
+  probeHostKey: (address: string, port: number) =>
+    request<{ fingerprint: string }>('/api/hosts/probe', { method: 'POST', body: JSON.stringify({ address, port }) }),
   getContainers: (hostId: string) => request<{ containers: ContainerInfo[] }>(`/api/hosts/${encodeURIComponent(hostId)}/containers`),
   getLogs: (hostId: string, unit: string, lines: number) =>
     request<{ lines: string[] }>(`/api/hosts/${encodeURIComponent(hostId)}/logs?unit=${encodeURIComponent(unit)}&lines=${lines}`),

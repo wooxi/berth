@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   resolveRegisteredHost,
+  validateHostAdminDraft,
   verifyPinnedFingerprint,
+  type HostAdminDraft,
   type RegisteredHost,
 } from './host-registry.ts'
 
@@ -63,4 +65,49 @@ test('rejects malformed fingerprints and emits secret-free audit metadata', () =
   assert.deepEqual(Object.keys(malformed.audit).sort(), [
     'event', 'hostId', 'occurredAt', 'reason', 'requestId',
   ].sort())
+})
+
+const draft: HostAdminDraft = {
+  id: 'edge-02',
+  label: 'Edge relay',
+  address: '192.0.2.61',
+  port: 22,
+  username: 'yard-reader',
+  fingerprint,
+  group: 'Production',
+  role: 'Relay node',
+  runtime: 'docker',
+  systemd: true,
+  enabled: true,
+}
+
+test('accepts a well-formed admin registration draft and trims text fields', () => {
+  const result = validateHostAdminDraft({ ...draft, label: '  Edge relay  ', group: ' Production ' })
+  assert.equal(result.ok, true)
+  assert.ok(result.ok && result.host.label === 'Edge relay')
+  assert.ok(result.ok && result.host.group === 'Production')
+})
+
+test('rejects drafts field by field with actionable messages', () => {
+  const bad = validateHostAdminDraft({
+    ...draft,
+    id: 'not allowed!',
+    address: 'bad host!',
+    port: 70000,
+    fingerprint: 'SHA256:short',
+  })
+  assert.equal(bad.ok, false)
+  if (!bad.ok) {
+    const fields = bad.issues.map((issue) => issue.field)
+    assert.deepEqual(fields.sort(), ['address', 'fingerprint', 'id', 'port'])
+    assert.ok(bad.issues.every((issue) => issue.message.length > 0))
+  }
+})
+
+test('fails closed on non-object and missing-key drafts', () => {
+  for (const value of [null, 'text', [], { ...draft, username: undefined }]) {
+    const result = validateHostAdminDraft(value)
+    assert.equal(result.ok, false)
+    assert.ok(!result.ok && result.issues.length > 0)
+  }
 })

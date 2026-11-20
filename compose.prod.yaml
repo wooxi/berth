@@ -14,7 +14,8 @@ services:
       YARD_BIND: 0.0.0.0
       PORT: 8080
     volumes:
-      - ./hosts.json:/app/config/hosts.json:ro
+      # 界面登记/编辑服务器会原地写回该文件（不换 inode，bind mount 安全）
+      - ./hosts.json:/app/config/hosts.json
       - ${YARD_SSH_KEY_FILE:?}:/run/secrets/yard_ssh_key:ro
       - ./data:/app/data
     expose:

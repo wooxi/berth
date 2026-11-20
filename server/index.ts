@@ -7,7 +7,8 @@ import { createSessionStore, hashPassword, verifyPassword, type SessionStore } f
 import { loadConfig, type BerthConfig, type BerthHostConfig } from './config.ts'
 import { createCollector, createContainerCollector, createLogCollector } from './collectors.ts'
 import { createFileService, isProtectedPath, normalizeRemotePath } from './files.ts'
-import { openSshConnection } from './ssh.ts'
+import { createHost, findHostConfig, updateHost } from './host-admin.ts'
+import { openSshConnection, probeHostFingerprint } from './ssh.ts'
 
 const STATIC_ROOT = process.env.YARD_STATIC_ROOT ?? '/app/public'
 const PORT = Number(process.env.PORT ?? '8080')
@@ -177,6 +178,90 @@ const server = createServer(async (request, response) => {
 
   if (pathname === '/api/audit' && request.method === 'GET') {
     sendJson(response, 200, { events: audit.recent(Number(url.searchParams.get('limit') ?? 100)) })
+    return
+  }
+
+  if (pathname === '/api/hosts' && request.method === 'POST') {
+    let payload: unknown
+    try {
+      payload = JSON.parse(await readBody(request))
+    } catch {
+      sendJson(response, 400, { error: 'invalid request' })
+      return
+    }
+    const result = createHost(config, payload)
+    audit.record({
+      actor: session.subjectId,
+      action: 'hosts.create',
+      hostId: result.ok ? result.host.id : null,
+      outcome: result.ok ? 'allow' : 'deny',
+      detail: result.ok ? `${result.host.address}:${result.host.port}` : result.error,
+    })
+    if (result.ok) {
+      sendJson(response, 201, { host: result.host })
+    } else {
+      sendJson(response, result.status, { error: result.error, issues: result.issues })
+    }
+    return
+  }
+
+  if (pathname === '/api/hosts/probe' && request.method === 'POST') {
+    try {
+      const body = JSON.parse(await readBody(request)) as { address?: unknown; port?: unknown }
+      const address = typeof body.address === 'string' ? body.address.trim() : ''
+      const port = typeof body.port === 'number' && Number.isInteger(body.port) && body.port >= 1 && body.port <= 65535
+        ? body.port
+        : 22
+      if (!address) throw new Error('缺少 address')
+      const result = await probeHostFingerprint(address, port)
+      audit.record({
+        actor: session.subjectId,
+        action: 'hosts.probe',
+        hostId: null,
+        outcome: result.ok ? 'allow' : 'deny',
+        detail: `${address}:${port}${result.ok ? ` → ${result.fingerprint.slice(0, 17)}…` : ` → ${result.reason}`}`,
+      })
+      sendJson(response, result.ok ? 200 : 502, result.ok ? { fingerprint: result.fingerprint } : { error: result.reason })
+    } catch (error) {
+      sendJson(response, 400, { error: (error as Error).message })
+    }
+    return
+  }
+
+  const hostConfigMatch = pathname.match(/^\/api\/hosts\/([^/]+)\/config$/)
+  if (hostConfigMatch && request.method === 'GET') {
+    const host = findHostConfig(config, hostConfigMatch[1])
+    if (!host) {
+      sendJson(response, 404, { error: 'unknown host' })
+      return
+    }
+    sendJson(response, 200, { host })
+    return
+  }
+
+  const hostUpdateMatch = pathname.match(/^\/api\/hosts\/([^/]+)$/)
+  if (hostUpdateMatch && request.method === 'PUT') {
+    const hostId = decodeURIComponent(hostUpdateMatch[1])
+    let payload: unknown
+    try {
+      payload = JSON.parse(await readBody(request))
+    } catch {
+      sendJson(response, 400, { error: 'invalid request' })
+      return
+    }
+    const result = updateHost(config, hostId, payload)
+    audit.record({
+      actor: session.subjectId,
+      action: 'hosts.update',
+      hostId: result.ok ? result.host.id : hostId,
+      outcome: result.ok ? 'allow' : 'deny',
+      detail: result.ok ? `${result.host.address}:${result.host.port}` : result.error,
+    })
+    if (result.ok) {
+      sendJson(response, 200, { host: result.host })
+    } else {
+      sendJson(response, result.status, { error: result.error, issues: result.issues })
+    }
     return
   }
 

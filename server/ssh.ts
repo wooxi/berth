@@ -76,6 +76,45 @@ export function openSshConnection(host: BerthHostConfig, options: SshClientOptio
 
 export type CommandResult = { ok: true; stdout: string; stderr: string; code: number } | { ok: false; reason: string }
 
+/**
+ * TOFU-style probe: connect far enough to see the server's public host key,
+ * then hang up without authenticating.  No private key involved.
+ */
+export function probeHostFingerprint(address: string, port: number, timeoutMs = 8000): Promise<{ ok: true; fingerprint: string } | { ok: false; reason: string }> {
+  return new Promise((resolve) => {
+    const client = new Client()
+    let captured: string | null = null
+    let settled = false
+
+    const finish = (result: { ok: true; fingerprint: string } | { ok: false; reason: string }) => {
+      if (settled) return
+      settled = true
+      try { client.end() } catch { /* already gone */ }
+      resolve(result)
+    }
+
+    client.on('error', (error: Error) => {
+      if (captured) finish({ ok: true, fingerprint: captured })
+      else finish({ ok: false, reason: error.message })
+    })
+
+    try {
+      client.connect({
+        host: address,
+        port,
+        username: 'yard-probe',
+        hostVerifier: (keyBlob: Buffer) => {
+          captured = fingerprintOf(keyBlob)
+          return false
+        },
+        readyTimeout: timeoutMs,
+      })
+    } catch (error) {
+      finish({ ok: false, reason: (error as Error).message })
+    }
+  })
+}
+
 export function runCommand(connection: SshConnection, command: string, timeoutMs = 12000): Promise<CommandResult> {
   return new Promise((resolve) => {
     connection.client.exec(command, (error, stream) => {

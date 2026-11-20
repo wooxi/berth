@@ -1,5 +1,7 @@
-import { Box, Folder, ScrollText, Server, Terminal } from 'lucide-react'
-import type { HostSnapshot } from '../api'
+﻿import { Box, Folder, ScrollText, Server, Terminal } from 'lucide-react'
+import type { HostSnapshot } from '@/api'
+import { Meter, StatusBadge } from '@/components/common'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TerminalTab } from './tabs/TerminalTab'
 import { FilesTab } from './tabs/FilesTab'
 import { ContainersTab } from './tabs/ContainersTab'
@@ -26,80 +28,62 @@ export function ConsoleView({
   notify: (message: string) => void
 }) {
   return (
-    <div className="console">
-      {/* Sticky identity bar: never loses context when switching tabs. */}
-      <header className="identity" aria-label={`${host.label} 身份信息`}>
-        <div className="identity-main">
-          <span className="identity-glyph" aria-hidden="true"><Server size={17} /></span>
-          <div className="identity-text">
-            <b>{host.label}</b>
-            <small>{host.address} · {host.role}</small>
+    <div className="flex h-full min-h-0 flex-col">
+      {/* 身份条：主机信息 + 实时指标 */}
+      <header className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-3 border-b border-border px-5 py-3" aria-label={`${host.label} 身份信息`}>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Server className="size-5" aria-hidden="true" /></span>
+          <div className="min-w-0 leading-tight">
+            <b className="block truncate text-[15px] font-semibold">{host.label}</b>
+            <small className="block truncate font-mono text-xs text-muted-foreground">{host.address} · {host.role}</small>
           </div>
-          <span className={`status-badge status-${host.status}`}>
-            <span className="status-dot" />
-            {host.status === 'online' ? 'SSH 已连接' : host.status === 'error' ? '连接失败' : '离线'}
-          </span>
+          <StatusBadge status={host.status} label={host.status === 'online' ? '已连接' : undefined} />
         </div>
 
-        <div className="identity-facts">
-          <div className="fact"><span>OS</span><b>{host.os ?? '—'}</b></div>
-          <div className="fact"><span>UPTIME</span><b>{host.uptime || '—'}</b></div>
-          <div className="fact"><span>LOAD</span><b>{host.load ? host.load.map((n) => n.toFixed(2)).join(' ') : '—'}</b></div>
-          <span className="perm-chip" title="当前会话权限">
-            <i aria-hidden="true" />
-            View
-          </span>
-        </div>
+        <dl className="hidden items-center gap-6 text-xs lg:flex">
+          <Info label="OS" value={host.os ?? '—'} />
+          <Info label="UPTIME" value={host.uptime || '—'} />
+          <Info label="LOAD" value={host.load ? host.load.map((n) => n.toFixed(2)).join(' ') : '—'} />
+        </dl>
+
+        {host.status === 'online' && (
+          <div className="ml-auto hidden w-[300px] gap-1.5 xl:grid">
+            <Meter label="CPU" value={host.cpuPercent} />
+            <Meter label="内存" value={host.memoryPercent} />
+          </div>
+        )}
       </header>
 
-      <div className="console-body">
-        <div className="tab-row" role="tablist" aria-label="服务器工作区">
+      <Tabs value={tab} onValueChange={(value) => onTabChange(value as ConsoleTab)} className="shrink-0 border-b border-border px-4 py-1.5">
+        <TabsList aria-label="服务器工作区">
           {TABS.map((item) => {
-            const Icon = item.icon
             const disabled = item.id === 'containers' && host.runtime === 'none'
             return (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                id={`tab-${item.id}`}
-                aria-selected={tab === item.id}
-                aria-controls={`panel-${item.id}`}
-                tabIndex={tab === item.id ? 0 : -1}
-                className="tab"
-                onClick={() => onTabChange(item.id)}
-                onKeyDown={(event) => {
-                  if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
-                  event.preventDefault()
-                  const index = TABS.findIndex((entry) => entry.id === tab)
-                  const next = event.key === 'ArrowRight'
-                    ? TABS[(index + 1) % TABS.length]
-                    : TABS[(index - 1 + TABS.length) % TABS.length]
-                  onTabChange(next.id)
-                  document.getElementById(`tab-${next.id}`)?.focus()
-                }}
-              >
-                <Icon size={14} aria-hidden="true" />
+              <TabsTrigger key={item.id} value={item.id}>
+                <item.icon aria-hidden="true" />
                 {item.label}
-                {disabled && <span className="tab-badge" aria-label="不可用">—</span>}
-              </button>
+                {disabled && <span aria-label="不可用" className="text-muted-foreground">—</span>}
+              </TabsTrigger>
             )
           })}
-        </div>
+        </TabsList>
+      </Tabs>
 
-        <div
-          className="tab-panel"
-          role="tabpanel"
-          id={`panel-${tab}`}
-          aria-labelledby={`tab-${tab}`}
-          tabIndex={0}
-        >
-          {tab === 'terminal' && <TerminalTab host={host} notify={notify} />}
-          {tab === 'files' && <FilesTab host={host} notify={notify} />}
-          {tab === 'containers' && <ContainersTab host={host} notify={notify} />}
-          {tab === 'logs' && <LogsTab host={host} />}
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col" role="tabpanel" aria-label={TABS.find((item) => item.id === tab)?.label}>
+        {tab === 'terminal' && <TerminalTab host={host} notify={notify} />}
+        {tab === 'files' && <FilesTab host={host} notify={notify} />}
+        {tab === 'containers' && <ContainersTab host={host} notify={notify} />}
+        {tab === 'logs' && <LogsTab host={host} />}
       </div>
+    </div>
+  )
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="leading-tight">
+      <dt className="text-[10px] font-medium tracking-wider text-muted-foreground">{label}</dt>
+      <dd className="max-w-48 truncate font-mono font-medium">{value}</dd>
     </div>
   )
 }
